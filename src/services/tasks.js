@@ -1,0 +1,375 @@
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  ThreadAutoArchiveDuration
+} from "discord.js";
+import { config } from "../config.js";
+import { getGuildState, updateGuildState } from "../data/store.js";
+import { createEmbed, errorEmbed, infoEmbed, successEmbed } from "../utils/embeds.js";
+import { sendLog } from "./logger.js";
+
+export const taskRoleChoices = [
+  { name: "Scripter / Programmer", value: "Programmer" },
+  { name: "Builder", value: "Builder" },
+  { name: "Animator", value: "Animator" },
+  { name: "VFX Artist", value: "VFX Artist" },
+  { name: "UI Designer", value: "UI Designer" },
+  { name: "3D Modeler", value: "3D Modeler" },
+  { name: "Sound Designer", value: "Sound Designer" },
+  { name: "QA Tester", value: "QA Tester" }
+];
+
+const approvalRoleNames = ["Owner", "Co-Owner", "Head Manager", "Lead Developer"];
+
+const taskChannelByRole = {
+  Programmer: {
+    key: "scripting",
+    names: ["💻・scripting", "scripting"]
+  },
+  Builder: {
+    key: "building",
+    names: ["🏗・building", "building"]
+  },
+  Animator: {
+    key: "animation",
+    names: ["🎞・animation", "animation"]
+  },
+  "VFX Artist": {
+    key: "vfx",
+    names: ["✨・vfx", "vfx"]
+  },
+  "UI Designer": {
+    key: "ui-design",
+    names: ["🎛・ui-design", "ui-design"]
+  },
+  "3D Modeler": {
+    key: "modeling",
+    names: ["🧊・modeling", "modeling"]
+  },
+  "Sound Designer": {
+    key: "audio",
+    names: ["🎧・audio", "audio"]
+  },
+  "QA Tester": {
+    key: "testing",
+    names: ["🧪・testing", "testing"]
+  }
+};
+
+function truncate(value, length) {
+  if (value.length <= length) return value;
+  return `${value.slice(0, length - 3)}...`;
+}
+
+function buildThreadName(roleName, title) {
+  const cleanTitle = title
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+
+  return truncate(`task-${roleName.toLowerCase().replace(/\s+/g, "-")}-${cleanTitle}`, 90);
+}
+
+function getRoleByName(guild, roleName) {
+  return guild.roles.cache.find((role) => role.name === roleName);
+}
+
+function getApprovalRoles(guild) {
+  return approvalRoleNames
+    .map((roleName) => getRoleByName(guild, roleName))
+    .filter(Boolean);
+}
+
+function normalizeChannelName(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/^[^a-z0-9]+/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+async function findTaskChannel(guild, roleName) {
+  const mapping = taskChannelByRole[roleName];
+
+  if (!mapping) {
+    throw new Error(`No task channel is mapped for ${roleName}.`);
+  }
+
+  const state = await getGuildState(guild.id);
+  const configuredId = state.channels?.[mapping.key];
+  const configuredChannel =
+    configuredId &&
+    (guild.channels.cache.get(configuredId) ??
+      await guild.channels.fetch(configuredId).catch(() => null));
+
+  if (configuredChannel) return configuredChannel;
+
+  const normalizedNames = new Set(mapping.names.map(normalizeChannelName));
+
+  return guild.channels.cache.find((channel) =>
+    [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type) &&
+    normalizedNames.has(normalizeChannelName(channel.name))
+  );
+}
+
+function hasRole(member, roleName) {
+  return member.roles.cache.some((role) => role.name === roleName);
+}
+
+function canApprove(member) {
+  return approvalRoleNames.some((roleName) => hasRole(member, roleName));
+}
+
+function doneButton(taskId, { disabled = false, label = "Done" } = {}) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`task:done:${taskId}`)
+      .setLabel(label)
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(disabled)
+  );
+}
+
+function approvalButtons(taskId, { disabled = false } = {}) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`task:approve:${taskId}`)
+      .setLabel("Approve")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId(`task:reject:${taskId}`)
+      .setLabel("Reject")
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(disabled)
+  );
+}
+
+async function getStoredTask(guildId, taskId) {
+  const state = await getGuildState(guildId);
+  const task = state.tasks.items[taskId];
+
+  if (!task) {
+    throw new Error("That task could not be found in the bot state.");
+  }
+
+  return task;
+}
+
+async function fetchThread(guild, task) {
+  const channel = guild.channels.cache.get(task.threadId) ??
+    await guild.channels.fetch(task.threadId).catch(() => null);
+
+  if (!channel?.isThread()) {
+    throw new Error("The task thread could not be found.");
+  }
+
+  return channel;
+}
+
+async function editTaskMessage(guild, task, row) {
+  const thread = await fetchThread(guild, task).catch(() => null);
+  if (!thread) return;
+
+  const message = await thread.messages.fetch(task.messageId).catch(() => null);
+  if (!message) return;
+
+  await message.edit({ components: [row] }).catch(() => null);
+}
+
+function validateTaskChannel(channel) {
+  if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) {
+    throw new Error("Use /task inside a normal text channel where the bot can create public threads.");
+  }
+}
+
+export async function createTaskThread(guild, actor, { roleName, title, details, due }) {
+  await guild.channels.fetch();
+  await guild.roles.fetch();
+
+  const assignedRole = getRoleByName(guild, roleName);
+  if (!assignedRole) {
+    throw new Error(`The ${roleName} role does not exist yet. Run /role_setup first.`);
+  }
+
+  const channel = await findTaskChannel(guild, roleName);
+  validateTaskChannel(channel);
+
+  const taskId = await updateGuildState(guild.id, (guildState) => {
+    guildState.tasks.counter += 1;
+    return String(guildState.tasks.counter);
+  });
+  const thread = await channel.threads.create({
+    name: buildThreadName(roleName, title),
+    autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
+    reason: `${actor.tag} created a Zenoria task`
+  });
+  const leadershipRoles = getApprovalRoles(guild);
+  const leadershipMentions = leadershipRoles.map((role) => `${role}`).join(" ");
+  const mentionRoleIds = [assignedRole.id, ...leadershipRoles.map((role) => role.id)];
+  const fields = [
+    { name: "Assigned Role", value: `${assignedRole}`, inline: true },
+    { name: "Created By", value: `${actor}`, inline: true },
+    {
+      name: "Leadership",
+      value: leadershipMentions || "Owner, Co-Owner, Head Manager, Lead Developer",
+      inline: false
+    }
+  ];
+
+  if (due) {
+    fields.push({ name: "Due", value: due, inline: true });
+  }
+
+  const taskMessage = await thread.send({
+    content: [assignedRole, ...leadershipRoles].map((role) => `${role}`).join(" "),
+    embeds: [
+      createEmbed({
+        title: `Task: ${title}`,
+        description: details,
+        fields
+      })
+    ],
+    components: [doneButton(taskId)],
+    allowedMentions: { roles: mentionRoleIds, users: [actor.id] }
+  });
+
+  await updateGuildState(guild.id, (guildState) => {
+    guildState.tasks.items[taskId] = {
+      id: taskId,
+      title,
+      details,
+      due: due ?? null,
+      roleName,
+      roleId: assignedRole.id,
+      channelId: channel.id,
+      threadId: thread.id,
+      messageId: taskMessage.id,
+      status: "open",
+      createdBy: actor.id,
+      createdAt: new Date().toISOString()
+    };
+  });
+
+  await sendLog(guild, {
+    title: "Task Created",
+    description: `${actor.tag} created a task for ${roleName}.`,
+    fields: [
+      { name: "Task", value: title, inline: true },
+      { name: "Thread", value: `${thread}`, inline: true }
+    ],
+    color: 0x3498db
+  });
+
+  return {
+    thread,
+    embed: successEmbed("Task Created", `Created ${thread} and pinged ${assignedRole}.`)
+  };
+}
+
+export async function submitTaskForApproval(guild, member, taskId) {
+  await guild.roles.fetch();
+
+  const task = await getStoredTask(guild.id, taskId);
+
+  if (task.status === "pending_approval") {
+    return infoEmbed("Already Submitted", "This task is already waiting for approval.");
+  }
+
+  if (task.status === "approved") {
+    return successEmbed("Already Approved", "This task has already been approved.");
+  }
+
+  if (!member.roles.cache.has(task.roleId) && !hasRole(member, task.roleName)) {
+    throw new Error(`Only members with the ${task.roleName} role can mark this task as done.`);
+  }
+
+  const thread = await fetchThread(guild, task);
+  const approvalRoles = getApprovalRoles(guild);
+  const approvalMentions = approvalRoles.map((role) => `${role}`).join(" ");
+  const approvalMessage = await thread.send({
+    content: approvalMentions || "Approval requested.",
+    embeds: [
+      infoEmbed("Task Ready For Approval", `${member} marked this task as done. Owner, Co-Owner, Head Manager, or Lead Developer must approve it.`, [
+        { name: "Task", value: task.title, inline: true },
+        { name: "Submitted By", value: `${member}`, inline: true }
+      ])
+    ],
+    components: [approvalButtons(taskId)],
+    allowedMentions: { roles: approvalRoles.map((role) => role.id), users: [member.id] }
+  });
+
+  await updateGuildState(guild.id, (guildState) => {
+    guildState.tasks.items[taskId] = {
+      ...guildState.tasks.items[taskId],
+      status: "pending_approval",
+      completedBy: member.id,
+      completedAt: new Date().toISOString(),
+      approvalMessageId: approvalMessage.id
+    };
+  });
+
+  await editTaskMessage(guild, task, doneButton(taskId, {
+    disabled: true,
+    label: "Awaiting Approval"
+  }));
+
+  return successEmbed("Sent For Approval", "The approval team has been pinged in the task thread.");
+}
+
+export async function reviewTask(guild, member, taskId, approved) {
+  await guild.roles.fetch();
+
+  const task = await getStoredTask(guild.id, taskId);
+
+  if (!canApprove(member)) {
+    throw new Error("Only Owner, Co-Owner, Head Manager, or Lead Developer can approve tasks.");
+  }
+
+  if (task.status !== "pending_approval") {
+    throw new Error("This task is not waiting for approval.");
+  }
+
+  const thread = await fetchThread(guild, task);
+  const nextStatus = approved ? "approved" : "rejected";
+
+  await updateGuildState(guild.id, (guildState) => {
+    guildState.tasks.items[taskId] = {
+      ...guildState.tasks.items[taskId],
+      status: nextStatus,
+      reviewedBy: member.id,
+      reviewedAt: new Date().toISOString()
+    };
+  });
+
+  if (task.approvalMessageId) {
+    const approvalMessage = await thread.messages.fetch(task.approvalMessageId).catch(() => null);
+    await approvalMessage?.edit({ components: [approvalButtons(taskId, { disabled: true })] }).catch(() => null);
+  }
+
+  await editTaskMessage(guild, task, doneButton(taskId, {
+    disabled: approved,
+    label: approved ? "Approved" : "Done"
+  }));
+
+  await thread.send({
+    embeds: [
+      approved
+        ? successEmbed("Task Approved", `${member} approved this task.`)
+        : errorEmbed("Task Rejected", `${member} rejected this task. The assigned team can mark it done again after fixing it.`)
+    ]
+  });
+
+  await sendLog(guild, {
+    title: approved ? "Task Approved" : "Task Rejected",
+    description: `${member.user.tag} ${approved ? "approved" : "rejected"} task "${task.title}".`,
+    fields: [{ name: "Thread", value: `${thread}`, inline: true }],
+    color: approved ? 0x2ecc71 : 0xe74c3c
+  });
+
+  return approved
+    ? successEmbed("Task Approved", "The task was approved.")
+    : errorEmbed("Task Rejected", "The assigned team can submit it again after fixing it.");
+}

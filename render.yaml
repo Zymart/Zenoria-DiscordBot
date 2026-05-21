@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: zenoria-discordbot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: AUTO_DEPLOY_COMMANDS
+        value: "false"
+      - key: BRAND_NAME
+        value: Zenoria
+      - key: EMBED_COLOR
+        value: E2231A
+      - key: DATA_FILE
+        value: ./data/state.json
+      - key: WIPE_CHANNELS_ON_SETUP
+        value: "true"
+      - key: PROTECTED_CHANNEL_IDS
+        value: "1505108163387719750"
+      - key: BOT_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: GUILD_ID
+        sync: false

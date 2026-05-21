@@ -1,0 +1,19 @@
+{
+  "name": "zenoria-discordbot",
+  "version": "1.0.0",
+  "description": "Professional official Roblox game Discord setup bot for Zenoria.",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "check": "node scripts/check-syntax.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.2.3"
+  }
+}
