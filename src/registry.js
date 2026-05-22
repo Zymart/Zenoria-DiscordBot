@@ -1,4 +1,5 @@
 import { Collection } from "discord.js";
+import addRole from "./commands/addRole.js";
 import ban from "./commands/ban.js";
 import channelsSetup from "./commands/channelsSetup.js";
 import kick from "./commands/kick.js";
@@ -20,6 +21,7 @@ export const commands = [
   setup,
   channelsSetup,
   rolePermission,
+  addRole,
   roleSetup,
   rolesSetup,
   pingVerify,

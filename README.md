@@ -46,6 +46,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/setup` creates the official server roles, categories, channels, permissions, verification panel, and ticket panel.
 - `/channels_setup` finds existing official channels, adds missing channels, syncs permissions, and removes deprecated `changelogs` / `game-news` channels.
 - `/role_permission` syncs current official channel permissions without creating or deleting channels.
+- `/add_role` adds a manageable role to a member.
 - `/role_setup` and `/roles_setup` clean non-official roles below the bot, keep existing official roles, and add missing official roles.
 - `/verify` gives the member `Verified` and `Member`.
 - `/pingverify` DMs members who still do not have the `Verified` role.
