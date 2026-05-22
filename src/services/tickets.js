@@ -100,6 +100,15 @@ export function createTicketPanelRow() {
   );
 }
 
+export function createApplicationTicketPanelRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("ticket:create")
+      .setLabel("Apply Now")
+      .setStyle(ButtonStyle.Success)
+  );
+}
+
 export function createCloseTicketRow() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -109,7 +118,16 @@ export function createCloseTicketRow() {
   );
 }
 
-export async function createTicket(guild, member, reason = "No reason provided") {
+export async function createTicket(
+  guild,
+  member,
+  reason = "No reason provided",
+  {
+    title = "Support Ticket",
+    intro = "A staff member will help you here. Use the button below when this ticket is finished.",
+    channelPrefix = "ticket"
+  } = {}
+) {
   const state = await getGuildState(guild.id);
   const existingTicketId = state.tickets.openByUser[member.id];
   const existingTicket =
@@ -131,13 +149,13 @@ export async function createTicket(guild, member, reason = "No reason provided")
   });
 
   const category = await findOrCreateTicketCategory(guild);
-  const channelName = `🎫・ticket-${String(ticketNumber).padStart(4, "0")}-${sanitizeChannelPart(member.user.username)}`;
+  const channelName = `🎫・${channelPrefix}-${String(ticketNumber).padStart(4, "0")}-${sanitizeChannelPart(member.user.username)}`;
 
   const channel = await guild.channels.create({
     name: channelName,
     type: ChannelType.GuildText,
     parent: category.id,
-    topic: `Support ticket for ${member.user.tag} (${member.id})`,
+    topic: `${title} for ${member.user.tag} (${member.id})`,
     permissionOverwrites: createTicketOverwrites(guild, member),
     reason: `Ticket opened by ${member.user.tag}: ${reason}`
   });
@@ -149,7 +167,7 @@ export async function createTicket(guild, member, reason = "No reason provided")
   await channel.send({
     content: `${member}`,
     embeds: [
-      infoEmbed("Support Ticket", "A staff member will help you here. Use the button below when this ticket is finished.", [
+      infoEmbed(title, intro, [
         { name: "Opened By", value: `${member}`, inline: true },
         { name: "Reason", value: reason.slice(0, 1024), inline: false }
       ])
@@ -169,6 +187,14 @@ export async function createTicket(guild, member, reason = "No reason provided")
     alreadyOpen: false,
     embed: successEmbed("Ticket Created", `Your ticket has been opened: ${channel}`)
   };
+}
+
+export function createApplicationTicket(guild, member) {
+  return createTicket(guild, member, "Application ticket opened", {
+    title: "Application Ticket",
+    intro: "Thanks for applying. Share what role you want, your experience, examples of your work, and anything else staff should know.",
+    channelPrefix: "apply"
+  });
 }
 
 function memberHasSupportRole(member) {

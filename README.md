@@ -63,6 +63,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - The setup can rebuild channels from scratch. Protected channel IDs are controlled by `PROTECTED_CHANNEL_IDS`.
 - `/role_setup` never deletes official roles, `@everyone`, managed/integration roles, roles assigned to the bot, or roles at/above the bot's highest role.
 - Verification uses the styled `✅・verify` channel for the button, then posts verified members with their avatar in `👋・welcome`.
+- The `ticket-for-applying` channel uses the same ticket system, but opens application tickets with application-focused instructions.
 - Development specialty channels only allow the matching specialty role plus `Lead Developer`, `Owner`, `Co-Owner`, and `Head Manager`.
 - Developer chat channels include `developer-chat`, `lead-dev-chat`, `programmer-chat`, `builder-chat`, and `creative-chat`.
 - Task threads ping the assigned dev role plus `Owner`, `Co-Owner`, `Head Manager`, and `Lead Developer` when created.

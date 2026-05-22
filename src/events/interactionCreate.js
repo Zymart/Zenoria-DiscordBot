@@ -1,5 +1,5 @@
 import { Events, MessageFlags } from "discord.js";
-import { closeTicket, createTicket } from "../services/tickets.js";
+import { closeTicket, createApplicationTicket, createTicket } from "../services/tickets.js";
 import { reviewTask, submitTaskForApproval } from "../services/tasks.js";
 import { verifyMember } from "../services/verification.js";
 import { errorEmbed } from "../utils/embeds.js";
@@ -46,7 +46,10 @@ export function registerInteractionCreate(client) {
 
         if (interaction.customId === "ticket:create") {
           await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-          const result = await createTicket(interaction.guild, member, "Opened from support panel");
+          const isApplicationPanel = interaction.channel?.name?.includes("ticket-for-applying");
+          const result = isApplicationPanel
+            ? await createApplicationTicket(interaction.guild, member)
+            : await createTicket(interaction.guild, member, "Opened from support panel");
           await interaction.editReply({ embeds: [result.embed] });
           return;
         }

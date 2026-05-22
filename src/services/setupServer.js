@@ -9,7 +9,7 @@ import {
 import { getGuildState, updateGuildState } from "../data/store.js";
 import { infoEmbed, successEmbed } from "../utils/embeds.js";
 import { sendLog } from "./logger.js";
-import { createTicketPanelRow } from "./tickets.js";
+import { createApplicationTicketPanelRow, createTicketPanelRow } from "./tickets.js";
 import { createVerificationRow } from "./verification.js";
 
 const textAllow = [
@@ -484,8 +484,11 @@ async function ensurePanels(guild, state) {
   const supportChannelId =
     state.channels[config.setup.supportChannelKey] ??
     state.channels[config.setup.supportChannelName];
+  const applicationTicketChannelId = state.channels["ticket-for-applying"];
   const verifyChannel = verifyChannelId && guild.channels.cache.get(verifyChannelId);
   const supportChannel = supportChannelId && guild.channels.cache.get(supportChannelId);
+  const applicationTicketChannel =
+    applicationTicketChannelId && guild.channels.cache.get(applicationTicketChannelId);
   const panels = {};
 
   if (verifyChannel?.isTextBased()) {
@@ -516,6 +519,22 @@ async function ensurePanels(guild, state) {
           )
         ],
         components: [createTicketPanelRow()]
+      }
+    );
+  }
+
+  if (applicationTicketChannel?.isTextBased()) {
+    panels.applicationTicketMessageId = await ensurePanelMessage(
+      applicationTicketChannel,
+      state.panels.applicationTicketMessageId,
+      {
+        embeds: [
+          infoEmbed(
+            "Apply For Zenoria",
+            "Open an application ticket for staff, development, moderation, or partnership applications. Include the role you want, your experience, and examples of your work."
+          )
+        ],
+        components: [createApplicationTicketPanelRow()]
       }
     );
   }
