@@ -8,6 +8,7 @@ import {
 } from "../data/serverTemplate.js";
 import { getGuildState, updateGuildState } from "../data/store.js";
 import { infoEmbed, successEmbed } from "../utils/embeds.js";
+import { createFaqPanelPayload } from "./faq.js";
 import { sendLog } from "./logger.js";
 import { createApplicationTicketPanelRow, createTicketPanelRow } from "./tickets.js";
 import { createVerificationRow } from "./verification.js";
@@ -485,10 +486,12 @@ async function ensurePanels(guild, state) {
     state.channels[config.setup.supportChannelKey] ??
     state.channels[config.setup.supportChannelName];
   const applicationTicketChannelId = state.channels["ticket-for-applying"];
+  const faqChannelId = state.channels.faq;
   const verifyChannel = verifyChannelId && guild.channels.cache.get(verifyChannelId);
   const supportChannel = supportChannelId && guild.channels.cache.get(supportChannelId);
   const applicationTicketChannel =
     applicationTicketChannelId && guild.channels.cache.get(applicationTicketChannelId);
+  const faqChannel = faqChannelId && guild.channels.cache.get(faqChannelId);
   const panels = {};
 
   if (verifyChannel?.isTextBased()) {
@@ -536,6 +539,14 @@ async function ensurePanels(guild, state) {
         ],
         components: [createApplicationTicketPanelRow()]
       }
+    );
+  }
+
+  if (faqChannel?.isTextBased()) {
+    panels.faqMessageId = await ensurePanelMessage(
+      faqChannel,
+      state.panels.faqMessageId,
+      createFaqPanelPayload()
     );
   }
 

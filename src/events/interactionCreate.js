@@ -2,6 +2,7 @@ import { Events, MessageFlags } from "discord.js";
 import { closeTicket, createApplicationTicket, createTicket } from "../services/tickets.js";
 import { reviewTask, submitTaskForApproval } from "../services/tasks.js";
 import { verifyMember } from "../services/verification.js";
+import { faqSelectId, handleFaqSelect } from "../services/faq.js";
 import { errorEmbed } from "../utils/embeds.js";
 import { sendLog } from "../services/logger.js";
 
@@ -82,6 +83,12 @@ export function registerInteractionCreate(client) {
           const [, , taskId] = interaction.customId.split(":");
           const embed = await reviewTask(interaction.guild, member, taskId, false);
           await interaction.editReply({ embeds: [embed] });
+        }
+      }
+
+      if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === faqSelectId) {
+          await handleFaqSelect(interaction);
         }
       }
     } catch (error) {
