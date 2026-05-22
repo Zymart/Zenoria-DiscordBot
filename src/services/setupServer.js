@@ -531,7 +531,7 @@ async function ensurePanels(guild, state) {
         embeds: [
           infoEmbed(
             "Apply For Zenoria",
-            "Open an application ticket for staff, development, moderation, or partnership applications. Include the role you want, your experience, and examples of your work."
+            "Open an application ticket for staff, development, moderation, or partnership applications. Include the role you want, your experience, and examples of your work. Owners and managers will be pinged when the ticket opens."
           )
         ],
         components: [createApplicationTicketPanelRow()]
