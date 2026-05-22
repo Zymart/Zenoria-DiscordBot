@@ -47,16 +47,24 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/channels_setup` finds existing official channels, adds missing channels, syncs permissions, and removes deprecated `changelogs` / `game-news` channels.
 - `/role_permission` syncs current official channel permissions without creating or deleting channels.
 - `/add_role` adds a manageable role to a member.
+- `/remove_role` removes a manageable role from a member.
+- `/clean_unverified_devs` removes developer roles from members who are not verified.
 - `/role_setup` and `/roles_setup` clean non-official roles below the bot, keep existing official roles, and add missing official roles.
 - `/verify` gives the member `Verified` and `Member`.
 - `/pingverify` DMs members who still do not have the `Verified` role.
+- `/post_faq` posts or refreshes the FAQ dropdown panel.
 - `/post_link` posts the official Roblox group embed with a link button.
 - `/post_update` posts an official update embed to the updates channel.
 - `/post_sneak` posts a spoilered sneak peek image to the sneak-peeks channel.
+- `/application_accept` accepts an application ticket, gives a role, and closes the ticket.
+- `/application_deny` denies an application ticket and closes it.
 - `/task` creates a development task thread inside the matching specialty channel, pings the assigned role, and routes completed work to leadership approval.
 - `/ticket create` opens a private support ticket.
 - `/ticket close` closes the current ticket channel.
+- `/member_info` shows useful member details.
 - `/ban`, `/kick`, `/timeout`, and `/purge` provide moderation tools.
+- `/lock` and `/unlock` control whether regular members can send messages in a channel.
+- `/warn` and `/warnings` save and view member warnings.
 
 ## Notes
 

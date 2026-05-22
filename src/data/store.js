@@ -18,6 +18,10 @@ function createDefaultGuildState() {
       counter: 0,
       openByUser: {}
     },
+    warnings: {
+      counter: 0,
+      byUser: {}
+    },
     tasks: {
       counter: 0,
       items: {}
@@ -55,6 +59,8 @@ function normalizeGuildState(state, guildId) {
   guildState.panels ??= {};
   guildState.tickets ??= { counter: 0, openByUser: {} };
   guildState.tickets.openByUser ??= {};
+  guildState.warnings ??= { counter: 0, byUser: {} };
+  guildState.warnings.byUser ??= {};
   guildState.tasks ??= { counter: 0, items: {} };
   guildState.tasks.items ??= {};
 

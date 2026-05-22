@@ -1,13 +1,20 @@
 import { Collection } from "discord.js";
 import addRole from "./commands/addRole.js";
+import applicationAccept from "./commands/applicationAccept.js";
+import applicationDeny from "./commands/applicationDeny.js";
 import ban from "./commands/ban.js";
 import channelsSetup from "./commands/channelsSetup.js";
+import cleanUnverifiedDevs from "./commands/cleanUnverifiedDevs.js";
 import kick from "./commands/kick.js";
+import lock from "./commands/lock.js";
+import memberInfo from "./commands/memberInfo.js";
+import postFaq from "./commands/postFaq.js";
 import pingVerify from "./commands/pingVerify.js";
 import postLink from "./commands/postLink.js";
 import postSneak from "./commands/postSneak.js";
 import postUpdate from "./commands/postUpdate.js";
 import purge from "./commands/purge.js";
+import removeRole from "./commands/removeRole.js";
 import rolePermission from "./commands/rolePermission.js";
 import roleSetup from "./commands/roleSetup.js";
 import rolesSetup from "./commands/rolesSetup.js";
@@ -15,26 +22,39 @@ import setup from "./commands/setup.js";
 import task from "./commands/task.js";
 import ticket from "./commands/ticket.js";
 import timeout from "./commands/timeout.js";
+import unlock from "./commands/unlock.js";
 import verify from "./commands/verify.js";
+import warn from "./commands/warn.js";
+import warnings from "./commands/warnings.js";
 
 export const commands = [
   setup,
   channelsSetup,
   rolePermission,
   addRole,
+  removeRole,
+  cleanUnverifiedDevs,
   roleSetup,
   rolesSetup,
   pingVerify,
+  postFaq,
   postLink,
   postUpdate,
   postSneak,
+  applicationAccept,
+  applicationDeny,
   task,
   verify,
+  memberInfo,
   ticket,
   ban,
   kick,
   timeout,
-  purge
+  purge,
+  lock,
+  unlock,
+  warn,
+  warnings
 ];
 
 export function createCommandCollection() {

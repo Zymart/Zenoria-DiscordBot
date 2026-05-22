@@ -5,26 +5,26 @@ import { successEmbed } from "../utils/embeds.js";
 
 export default {
   data: new SlashCommandBuilder()
-    .setName("add_role")
-    .setDescription("Add a role to a member.")
+    .setName("remove_role")
+    .setDescription("Remove a role from a member.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .setDMPermission(false)
     .addUserOption((option) =>
       option
         .setName("user")
-        .setDescription("The member to receive the role.")
+        .setDescription("The member to remove the role from.")
         .setRequired(true)
     )
     .addRoleOption((option) =>
       option
         .setName("role")
-        .setDescription("The role to add.")
+        .setDescription("The role to remove.")
         .setRequired(true)
     )
     .addStringOption((option) =>
       option
         .setName("reason")
-        .setDescription("Reason for adding the role.")
+        .setDescription("Reason for removing the role.")
         .setMaxLength(500)
         .setRequired(false)
     ),
@@ -36,23 +36,24 @@ export default {
     const reason = interaction.options.getString("reason") ?? "No reason provided";
     const targetMember = await interaction.guild.members.fetch(user.id);
     const actorMember = await interaction.guild.members.fetch(interaction.user.id);
-    await assertManageableRole(interaction.guild, actorMember, role, "add");
 
-    if (targetMember.roles.cache.has(role.id)) {
-      throw new Error(`${user.tag} already has ${role.name}.`);
+    await assertManageableRole(interaction.guild, actorMember, role, "remove");
+
+    if (!targetMember.roles.cache.has(role.id)) {
+      throw new Error(`${user.tag} does not have ${role.name}.`);
     }
 
-    await targetMember.roles.add(role, `${interaction.user.tag}: ${reason}`);
+    await targetMember.roles.remove(role, `${interaction.user.tag}: ${reason}`);
 
     await sendLog(interaction.guild, {
-      title: "Role Added",
-      description: `${interaction.user.tag} added ${role} to ${user.tag}.`,
+      title: "Role Removed",
+      description: `${interaction.user.tag} removed ${role} from ${user.tag}.`,
       fields: [{ name: "Reason", value: reason.slice(0, 1024) }],
-      color: 0x2ecc71
+      color: 0xe67e22
     });
 
     await interaction.editReply({
-      embeds: [successEmbed("Role Added", `Added ${role} to ${targetMember}.`)]
+      embeds: [successEmbed("Role Removed", `Removed ${role} from ${targetMember}.`)]
     });
   }
 };
