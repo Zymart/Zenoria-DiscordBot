@@ -125,7 +125,7 @@ export async function handleFaqSelect(interaction) {
       embeds: [
         createEmbed({
           title: "How To Apply As Developer",
-          description: `Go to ${applicationChannel} and click **Apply Now**.\n\nWhen the ticket opens, tell the team what developer role you want, your experience, examples of your work, your timezone, and anything else owners or managers should know.`
+          description: `Go to ${applicationChannel}.\n\nWhen the ticket opens, tell the team what developer role you want, your experience, examples of your work, your timezone, and anything else owners or managers should know.`
         })
       ],
       flags: MessageFlags.Ephemeral
