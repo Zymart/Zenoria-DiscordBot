@@ -125,7 +125,8 @@ export async function createTicket(
   {
     title = "Support Ticket",
     intro = "A staff member will help you here. Use the button below when this ticket is finished.",
-    channelPrefix = "ticket"
+    channelPrefix = "ticket",
+    mentionRoleNames = []
   } = {}
 ) {
   const state = await getGuildState(guild.id);
@@ -164,15 +165,21 @@ export async function createTicket(
     guildState.tickets.openByUser[member.id] = channel.id;
   });
 
+  const mentionRoles = getRolesByName(guild, mentionRoleNames);
+
   await channel.send({
-    content: `${member}`,
+    content: [member, ...mentionRoles].map((mentionable) => `${mentionable}`).join(" "),
     embeds: [
       infoEmbed(title, intro, [
         { name: "Opened By", value: `${member}`, inline: true },
         { name: "Reason", value: reason.slice(0, 1024), inline: false }
       ])
     ],
-    components: [createCloseTicketRow()]
+    components: [createCloseTicketRow()],
+    allowedMentions: {
+      users: [member.id],
+      roles: mentionRoles.map((role) => role.id)
+    }
   });
 
   await sendLog(guild, {
@@ -193,7 +200,8 @@ export function createApplicationTicket(guild, member) {
   return createTicket(guild, member, "Application ticket opened", {
     title: "Application Ticket",
     intro: "Thanks for applying. Share what role you want, your experience, examples of your work, and anything else staff should know.",
-    channelPrefix: "apply"
+    channelPrefix: "apply",
+    mentionRoleNames: roleGroups.ownership
   });
 }
 
