@@ -4,6 +4,8 @@ import channelsSetup from "./commands/channelsSetup.js";
 import kick from "./commands/kick.js";
 import pingVerify from "./commands/pingVerify.js";
 import postLink from "./commands/postLink.js";
+import postSneak from "./commands/postSneak.js";
+import postUpdate from "./commands/postUpdate.js";
 import purge from "./commands/purge.js";
 import rolePermission from "./commands/rolePermission.js";
 import roleSetup from "./commands/roleSetup.js";
@@ -22,6 +24,8 @@ export const commands = [
   rolesSetup,
   pingVerify,
   postLink,
+  postUpdate,
+  postSneak,
   task,
   verify,
   ticket,

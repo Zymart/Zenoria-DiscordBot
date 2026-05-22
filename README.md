@@ -50,6 +50,8 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/verify` gives the member `Verified` and `Member`.
 - `/pingverify` DMs members who still do not have the `Verified` role.
 - `/post_link` posts the official Roblox group embed with a link button.
+- `/post_update` posts an official update embed to the updates channel.
+- `/post_sneak` posts a spoilered sneak peek image to the sneak-peeks channel.
 - `/task` creates a development task thread inside the matching specialty channel, pings the assigned role, and routes completed work to leadership approval.
 - `/ticket create` opens a private support ticket.
 - `/ticket close` closes the current ticket channel.
