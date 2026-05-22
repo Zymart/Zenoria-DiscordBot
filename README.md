@@ -49,6 +49,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/role_setup` and `/roles_setup` clean non-official roles below the bot, keep existing official roles, and add missing official roles.
 - `/verify` gives the member `Verified` and `Member`.
 - `/pingverify` DMs members who still do not have the `Verified` role.
+- `/post_link` posts the official Roblox group embed with a link button.
 - `/task` creates a development task thread inside the matching specialty channel, pings the assigned role, and routes completed work to leadership approval.
 - `/ticket create` opens a private support ticket.
 - `/ticket close` closes the current ticket channel.

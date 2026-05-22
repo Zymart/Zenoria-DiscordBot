@@ -3,6 +3,7 @@ import ban from "./commands/ban.js";
 import channelsSetup from "./commands/channelsSetup.js";
 import kick from "./commands/kick.js";
 import pingVerify from "./commands/pingVerify.js";
+import postLink from "./commands/postLink.js";
 import purge from "./commands/purge.js";
 import rolePermission from "./commands/rolePermission.js";
 import roleSetup from "./commands/roleSetup.js";
@@ -20,6 +21,7 @@ export const commands = [
   roleSetup,
   rolesSetup,
   pingVerify,
+  postLink,
   task,
   verify,
   ticket,
