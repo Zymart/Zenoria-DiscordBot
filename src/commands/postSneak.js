@@ -19,13 +19,6 @@ export default {
         .setMaxLength(1000)
         .setRequired(false)
     )
-    .addStringOption((option) =>
-      option
-        .setName("title")
-        .setDescription("Optional embed title.")
-        .setMaxLength(100)
-        .setRequired(false)
-    )
     .addChannelOption((option) =>
       option
         .setName("channel")
@@ -39,7 +32,6 @@ export default {
     const result = await postSneak(interaction, {
       file: interaction.options.getAttachment("file") ?? interaction.options.getAttachment("image", true),
       caption: interaction.options.getString("caption") ?? undefined,
-      title: interaction.options.getString("title") ?? undefined,
       channel: interaction.options.getChannel("channel") ?? undefined
     });
 

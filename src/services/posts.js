@@ -174,7 +174,7 @@ export async function postUpdate(interaction, { update, title, channel }) {
   };
 }
 
-export async function postSneak(interaction, { file, image, caption, title, channel }) {
+export async function postSneak(interaction, { file, image, caption, channel }) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
   requirePostAccess(member, sneakRoleNames, "post_sneak");
 
@@ -191,7 +191,6 @@ export async function postSneak(interaction, { file, image, caption, title, chan
     [
       PermissionFlagsBits.ViewChannel,
       PermissionFlagsBits.SendMessages,
-      PermissionFlagsBits.EmbedLinks,
       PermissionFlagsBits.AttachFiles
     ],
     "post sneak peeks"
@@ -203,14 +202,7 @@ export async function postSneak(interaction, { file, image, caption, title, chan
   }).setSpoiler(true);
 
   const message = await targetChannel.send({
-    content: "New Zenoria sneak peek:",
-    embeds: [
-      createEmbed({
-        title: title || "Zenoria Sneak Peek",
-        description: caption || "A new sneak peek has been posted.",
-        fields: [{ name: "Posted By", value: `${interaction.user}`, inline: true }]
-      })
-    ],
+    content: caption ? `New Zenoria sneak peek:\n${caption}` : "New Zenoria sneak peek:",
     files: [spoilerFile]
   });
 
