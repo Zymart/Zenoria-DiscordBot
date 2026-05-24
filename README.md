@@ -55,7 +55,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/post_faq` posts or refreshes the FAQ dropdown panel.
 - `/post_link` posts the official Roblox group embed with a link button.
 - `/post_update` posts an official update embed to the updates channel.
-- `/post_sneak` posts a spoilered sneak peek image to the sneak-peeks channel.
+- `/post_sneak` posts a spoilered sneak peek file to the sneak-peeks channel.
 - `/application_accept` accepts an application ticket, gives a role, and closes the ticket.
 - `/application_deny` denies an application ticket and closes it.
 - `/task` creates a development task thread inside the matching specialty channel, pings the assigned role, and routes completed work to leadership approval.

@@ -15,7 +15,25 @@ const sneakRoleNames = [...new Set([
   ...roleGroups.development
 ])];
 
-const imageExtensions = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
+const contentTypeExtensionOverrides = new Map([
+  ["application/gzip", "gz"],
+  ["application/javascript", "js"],
+  ["application/json", "json"],
+  ["application/pdf", "pdf"],
+  ["application/vnd.rar", "rar"],
+  ["application/x-7z-compressed", "7z"],
+  ["application/x-tar", "tar"],
+  ["application/zip", "zip"],
+  ["audio/mpeg", "mp3"],
+  ["audio/ogg", "ogg"],
+  ["audio/wav", "wav"],
+  ["image/jpeg", "jpg"],
+  ["text/css", "css"],
+  ["text/csv", "csv"],
+  ["text/html", "html"],
+  ["text/plain", "txt"],
+  ["video/quicktime", "mov"]
+]);
 
 function normalizeLookupName(name) {
   return String(name)
@@ -89,25 +107,25 @@ async function resolveTargetChannel(interaction, selectedChannel, key, aliases) 
   return validatePostChannel(defaultChannel ?? interaction.channel);
 }
 
-function isImageAttachment(attachment) {
-  if (attachment.contentType) {
-    return attachment.contentType.toLowerCase().startsWith("image/");
+function extensionFromContentType(contentType) {
+  const normalizedContentType = contentType?.split(";").at(0)?.trim().toLowerCase();
+  if (!normalizedContentType) return "bin";
+  if (contentTypeExtensionOverrides.has(normalizedContentType)) {
+    return contentTypeExtensionOverrides.get(normalizedContentType);
   }
 
-  const extension = attachment.name?.split(".").at(-1)?.toLowerCase();
-  return imageExtensions.has(extension);
-}
+  const subtype = normalizedContentType.split("/").at(1);
+  const cleanedSubtype = subtype
+    ?.split("+")
+    .at(0)
+    ?.replace(/[^\w.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
-function imageExtensionFromContentType(contentType) {
-  const subtype = contentType?.split("/").at(1)?.split(";").at(0)?.toLowerCase();
-  if (subtype === "jpeg" || subtype === "jpg") return "jpg";
-  if (imageExtensions.has(subtype)) return subtype;
-
-  return "png";
+  return cleanedSubtype || "bin";
 }
 
 function sanitizeAttachmentName(name, contentType) {
-  const fallback = `sneak-peek.${imageExtensionFromContentType(contentType)}`;
+  const fallback = `sneak-peek.${extensionFromContentType(contentType)}`;
   const withoutSpoilerPrefix = String(name || fallback).replace(/^SPOILER_/i, "");
   const cleaned = withoutSpoilerPrefix
     .replace(/[^\w.-]+/g, "-")
@@ -156,12 +174,14 @@ export async function postUpdate(interaction, { update, title, channel }) {
   };
 }
 
-export async function postSneak(interaction, { image, caption, title, channel }) {
+export async function postSneak(interaction, { file, image, caption, title, channel }) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
   requirePostAccess(member, sneakRoleNames, "post_sneak");
 
-  if (!isImageAttachment(image)) {
-    throw new Error("Attach a PNG, JPG, GIF, or WebP image for the sneak peek.");
+  const attachment = file ?? image;
+
+  if (!attachment) {
+    throw new Error("Attach a file for the sneak peek.");
   }
 
   const targetChannel = await resolveTargetChannel(interaction, channel, "sneak-peeks", ["sneak-peeks"]);
@@ -177,9 +197,9 @@ export async function postSneak(interaction, { image, caption, title, channel })
     "post sneak peeks"
   );
 
-  const spoilerImage = new AttachmentBuilder(image.url, {
-    name: sanitizeAttachmentName(image.name, image.contentType),
-    description: "Zenoria sneak peek image"
+  const spoilerFile = new AttachmentBuilder(attachment.url, {
+    name: sanitizeAttachmentName(attachment.name, attachment.contentType),
+    description: "Zenoria sneak peek file"
   }).setSpoiler(true);
 
   const message = await targetChannel.send({
@@ -191,7 +211,7 @@ export async function postSneak(interaction, { image, caption, title, channel })
         fields: [{ name: "Posted By", value: `${interaction.user}`, inline: true }]
       })
     ],
-    files: [spoilerImage]
+    files: [spoilerFile]
   });
 
   await sendLog(interaction.guild, {
@@ -203,6 +223,6 @@ export async function postSneak(interaction, { image, caption, title, channel })
 
   return {
     message,
-    embed: successEmbed("Posted Sneak Peek", `Sent the spoiler image in ${targetChannel}.`, createMessageLinkField(message))
+    embed: successEmbed("Posted Sneak Peek", `Sent the spoiler file in ${targetChannel}.`, createMessageLinkField(message))
   };
 }

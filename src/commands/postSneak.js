@@ -4,12 +4,12 @@ import { postSneak } from "../services/posts.js";
 export default {
   data: new SlashCommandBuilder()
     .setName("post_sneak")
-    .setDescription("Post a spoilered Zenoria sneak peek image.")
+    .setDescription("Post a spoilered Zenoria sneak peek file.")
     .setDMPermission(false)
     .addAttachmentOption((option) =>
       option
-        .setName("image")
-        .setDescription("Image to post as a spoiler.")
+        .setName("file")
+        .setDescription("File to post as a spoiler.")
         .setRequired(true)
     )
     .addStringOption((option) =>
@@ -37,7 +37,7 @@ export default {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const result = await postSneak(interaction, {
-      image: interaction.options.getAttachment("image", true),
+      file: interaction.options.getAttachment("file") ?? interaction.options.getAttachment("image", true),
       caption: interaction.options.getString("caption") ?? undefined,
       title: interaction.options.getString("title") ?? undefined,
       channel: interaction.options.getChannel("channel") ?? undefined
