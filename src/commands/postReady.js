@@ -1,5 +1,6 @@
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -13,6 +14,8 @@ const postableChannelTypes = new Set([
   ChannelType.GuildText,
   ChannelType.GuildAnnouncement
 ]);
+const maxPhotoAttachments = 10;
+const imageExtensions = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
 
 function validatePostChannel(channel) {
   if (!channel || !postableChannelTypes.has(channel.type) || typeof channel.send !== "function") {
@@ -51,7 +54,39 @@ function findRobloxUrl(content) {
   return null;
 }
 
-async function ensureBotPermissions(guild, channel) {
+function attachmentExtension(attachment) {
+  const contentTypeExtension = attachment.contentType?.split(";").at(0)?.split("/").at(1)?.toLowerCase();
+  const nameExtension = attachment.name?.split(".").at(-1)?.toLowerCase();
+  const extension = imageExtensions.has(contentTypeExtension) ? contentTypeExtension : nameExtension;
+
+  return imageExtensions.has(extension) ? extension : "png";
+}
+
+function isImageAttachment(attachment) {
+  const contentType = attachment.contentType?.toLowerCase();
+  const nameExtension = attachment.name?.split(".").at(-1)?.toLowerCase();
+
+  return contentType?.startsWith("image/") || imageExtensions.has(nameExtension);
+}
+
+function createPhotoFiles(message) {
+  return [...message.attachments.values()]
+    .filter(isImageAttachment)
+    .slice(0, maxPhotoAttachments)
+    .map((attachment, index) => {
+      const name = `ready-photo-${index + 1}.${attachmentExtension(attachment)}`;
+
+      return {
+        name,
+        file: new AttachmentBuilder(attachment.url, {
+          name,
+          description: "Ready post photo"
+        })
+      };
+    });
+}
+
+async function ensureBotPermissions(guild, channel, { withPhotos = false } = {}) {
   const botMember = guild.members.me ?? await guild.members.fetchMe();
   const permissions = channel.permissionsFor(botMember);
   const needed = [
@@ -60,10 +95,19 @@ async function ensureBotPermissions(guild, channel) {
     PermissionFlagsBits.EmbedLinks,
     PermissionFlagsBits.CreateInstantInvite
   ];
+
+  if (withPhotos) {
+    needed.push(PermissionFlagsBits.AttachFiles);
+  }
+
   const missing = needed.filter((permission) => !permissions?.has(permission));
 
   if (missing.length > 0) {
-    throw new Error(`I need View Channel, Send Messages, Embed Links, and Create Instant Invite in ${channel}.`);
+    const permissionList = withPhotos
+      ? "View Channel, Send Messages, Embed Links, Create Instant Invite, and Attach Files"
+      : "View Channel, Send Messages, Embed Links, and Create Instant Invite";
+
+    throw new Error(`I need ${permissionList} in ${channel}.`);
   }
 }
 
@@ -105,7 +149,7 @@ export default {
     await ensureBotPermissions(interaction.guild, targetChannel);
 
     await interaction.reply({
-      content: "Send your ready message in this channel within 2 minutes. Include the Roblox link and I will turn it into buttons.",
+      content: "Send your ready message in this channel within 2 minutes. Include the Roblox link, and you can attach up to 10 photos.",
       flags: MessageFlags.Ephemeral
     });
 
@@ -137,6 +181,12 @@ export default {
       return;
     }
 
+    const photoFiles = createPhotoFiles(sourceMessage);
+
+    if (photoFiles.length > 0) {
+      await ensureBotPermissions(interaction.guild, targetChannel, { withPhotos: true });
+    }
+
     let message;
 
     try {
@@ -148,15 +198,20 @@ export default {
         reason: `Permanent invite created by /post_ready for ${interaction.user.tag}`
       });
 
+      const embed = createEmbed({
+        title: "Zenoria Ready",
+        description: readyText,
+        fields: [{ name: "Posted By", value: `${interaction.user}`, inline: true }]
+      });
+
+      if (photoFiles.length > 0) {
+        embed.setImage(`attachment://${photoFiles[0].name}`);
+      }
+
       message = await targetChannel.send({
         content: "Zenoria is ready:",
-        embeds: [
-          createEmbed({
-            title: "Zenoria Ready",
-            description: readyText,
-            fields: [{ name: "Posted By", value: `${interaction.user}`, inline: true }]
-          })
-        ],
+        embeds: [embed],
+        files: photoFiles.map((photo) => photo.file),
         components: [createButtonRow(robloxUrl, invite.url)]
       });
     } catch (error) {
@@ -169,6 +224,7 @@ export default {
       embeds: [
         successEmbed("Posted Ready Message", `Sent the ready embed in ${targetChannel}.`, [
           { name: "Message", value: `[Open message](${message.url})` },
+          { name: "Photos", value: photoFiles.length > 0 ? `Added ${photoFiles.length} photo(s).` : "No photos attached." },
           { name: "Discord Invite", value: "Created as permanent with no expiry and unlimited uses." }
         ])
       ]
