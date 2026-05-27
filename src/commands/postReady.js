@@ -1,8 +1,5 @@
 import {
-  ActionRowBuilder,
   AttachmentBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ChannelType,
   MessageFlags,
   PermissionFlagsBits,
@@ -151,39 +148,14 @@ async function editWithError(interaction, message) {
   });
 }
 
-async function resolveButtonEmoji(guild, patterns, fallback) {
-  const emojis = await guild.emojis.fetch().catch(() => guild.emojis.cache);
-  const emoji = emojis.find((candidate) =>
-    patterns.some((pattern) => pattern.test(candidate.name))
-  );
-
-  return emoji
-    ? { id: emoji.id, name: emoji.name, animated: emoji.animated }
-    : { name: fallback };
-}
-
-async function createButtonRow(guild, inviteUrl) {
-  const robloxEmoji = await resolveButtonEmoji(guild, [/roblox/i, /\brbx\b/i, /blox/i], "\u{1F3AE}");
-  const discordEmoji = await resolveButtonEmoji(guild, [/discord/i, /server/i, /invite/i], "\u{1F4AC}");
-
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setStyle(ButtonStyle.Link)
-      .setLabel("Join our Roblox Group")
-      .setEmoji(robloxEmoji)
-      .setURL(ROBLOX_GROUP_URL),
-    new ButtonBuilder()
-      .setStyle(ButtonStyle.Link)
-      .setLabel("Join our Discord Server")
-      .setEmoji(discordEmoji)
-      .setURL(inviteUrl)
-  );
-}
-
-function createReadyEmbed(readyText, collageFile) {
+function createReadyEmbed(readyText, collageFile, inviteUrl) {
   const embed = createEmbed({
     title: "Zenoria Ready",
-    description: readyText
+    description: readyText,
+    fields: [
+      { name: "Join our Roblox Group", value: `[Open Roblox Group](${ROBLOX_GROUP_URL})`, inline: true },
+      { name: "Join our Discord Server", value: `[Open Discord Invite](${inviteUrl})`, inline: true }
+    ]
   });
 
   if (collageFile) {
@@ -256,9 +228,8 @@ export default {
       const collageFile = await createPhotoCollage(photoUrls);
 
       message = await targetChannel.send({
-        embeds: [createReadyEmbed(readyText, collageFile)],
-        files: collageFile ? [collageFile] : [],
-        components: [await createButtonRow(interaction.guild, invite.url)]
+        embeds: [createReadyEmbed(readyText, collageFile, invite.url)],
+        files: collageFile ? [collageFile] : []
       });
 
       await sourceMessage.delete();
