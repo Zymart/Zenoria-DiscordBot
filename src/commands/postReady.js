@@ -180,11 +180,10 @@ async function createButtonRow(guild, inviteUrl) {
   );
 }
 
-function createReadyEmbed(readyText, user, collageFile) {
+function createReadyEmbed(readyText, collageFile) {
   const embed = createEmbed({
     title: "Zenoria Ready",
-    description: readyText,
-    fields: [{ name: "Posted By", value: `${user}`, inline: true }]
+    description: readyText
   });
 
   if (collageFile) {
@@ -257,7 +256,7 @@ export default {
       const collageFile = await createPhotoCollage(photoUrls);
 
       message = await targetChannel.send({
-        embeds: [createReadyEmbed(readyText, interaction.user, collageFile)],
+        embeds: [createReadyEmbed(readyText, collageFile)],
         files: collageFile ? [collageFile] : [],
         components: [await createButtonRow(interaction.guild, invite.url)]
       });
