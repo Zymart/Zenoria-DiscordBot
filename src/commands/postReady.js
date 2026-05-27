@@ -4,12 +4,11 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
-  EmbedBuilder,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder
 } from "discord.js";
-import { config } from "../config.js";
+import sharp from "sharp";
 import { createEmbed, errorEmbed, successEmbed } from "../utils/embeds.js";
 
 const postableChannelTypes = new Set([
@@ -18,6 +17,7 @@ const postableChannelTypes = new Set([
 ]);
 const ROBLOX_GROUP_URL = "https://www.roblox.com/groups/437848777";
 const maxPhotoAttachments = 10;
+const collageFileName = "ready-photos.jpg";
 const imageExtensions = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
 
 function validatePostChannel(channel) {
@@ -32,14 +32,6 @@ function validatePostChannel(channel) {
   return channel;
 }
 
-function attachmentExtension(attachment) {
-  const contentTypeExtension = attachment.contentType?.split(";").at(0)?.split("/").at(1)?.toLowerCase();
-  const nameExtension = attachment.name?.split(".").at(-1)?.toLowerCase();
-  const extension = imageExtensions.has(contentTypeExtension) ? contentTypeExtension : nameExtension;
-
-  return imageExtensions.has(extension) ? extension : "png";
-}
-
 function isImageAttachment(attachment) {
   const contentType = attachment.contentType?.toLowerCase();
   const nameExtension = attachment.name?.split(".").at(-1)?.toLowerCase();
@@ -47,21 +39,73 @@ function isImageAttachment(attachment) {
   return contentType?.startsWith("image/") || imageExtensions.has(nameExtension);
 }
 
-function createPhotoFiles(message) {
+function createPhotoSources(message) {
   return [...message.attachments.values()]
     .filter(isImageAttachment)
     .slice(0, maxPhotoAttachments)
-    .map((attachment, index) => {
-      const name = `ready-photo-${index + 1}.${attachmentExtension(attachment)}`;
+    .map((attachment) => attachment.url);
+}
+
+function collageColumns(photoCount) {
+  if (photoCount <= 1) return 1;
+  if (photoCount <= 4) return 2;
+  if (photoCount <= 9) return 3;
+  return 4;
+}
+
+async function fetchImageBuffer(url) {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error("I could not download one of the attached photos.");
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function createPhotoCollage(photoUrls) {
+  if (photoUrls.length === 0) return null;
+
+  const tileSize = photoUrls.length === 1 ? 1024 : 560;
+  const gap = photoUrls.length === 1 ? 0 : 16;
+  const columns = collageColumns(photoUrls.length);
+  const rows = Math.ceil(photoUrls.length / columns);
+  const width = columns * tileSize + Math.max(0, columns - 1) * gap;
+  const height = rows * tileSize + Math.max(0, rows - 1) * gap;
+
+  const tiles = await Promise.all(
+    photoUrls.map(async (url, index) => {
+      const input = await fetchImageBuffer(url);
+      const buffer = await sharp(input, { animated: false })
+        .rotate()
+        .resize(tileSize, tileSize, { fit: "cover" })
+        .jpeg({ quality: 90 })
+        .toBuffer();
 
       return {
-        name,
-        file: new AttachmentBuilder(attachment.url, {
-          name,
-          description: "Ready post photo"
-        })
+        input: buffer,
+        left: (index % columns) * (tileSize + gap),
+        top: Math.floor(index / columns) * (tileSize + gap)
       };
-    });
+    })
+  );
+
+  const buffer = await sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: "#111827"
+    }
+  })
+    .composite(tiles)
+    .jpeg({ quality: 88 })
+    .toBuffer();
+
+  return new AttachmentBuilder(buffer, {
+    name: collageFileName,
+    description: "Ready post photo collage"
+  });
 }
 
 async function ensureBotPermissions(guild, channel, { withPhotos = false } = {}) {
@@ -136,28 +180,18 @@ async function createButtonRow(guild, inviteUrl) {
   );
 }
 
-function createReadyEmbeds(readyText, user, photoFiles) {
-  const embeds = [
-    createEmbed({
-      title: "Zenoria Ready",
-      description: readyText,
-      fields: [{ name: "Posted By", value: `${user}`, inline: true }]
-    })
-  ];
+function createReadyEmbed(readyText, user, collageFile) {
+  const embed = createEmbed({
+    title: "Zenoria Ready",
+    description: readyText,
+    fields: [{ name: "Posted By", value: `${user}`, inline: true }]
+  });
 
-  if (photoFiles.length > 0) {
-    embeds[0].setImage(`attachment://${photoFiles[0].name}`);
+  if (collageFile) {
+    embed.setImage(`attachment://${collageFileName}`);
   }
 
-  for (const photo of photoFiles.slice(1)) {
-    embeds.push(
-      new EmbedBuilder()
-        .setColor(config.embedColor)
-        .setImage(`attachment://${photo.name}`)
-    );
-  }
-
-  return embeds;
+  return embed;
 }
 
 export default {
@@ -204,9 +238,9 @@ export default {
       return;
     }
 
-    const photoFiles = createPhotoFiles(sourceMessage);
+    const photoUrls = createPhotoSources(sourceMessage);
 
-    if (photoFiles.length > 0) {
+    if (photoUrls.length > 0) {
       await ensureBotPermissions(interaction.guild, targetChannel, { withPhotos: true });
     }
 
@@ -220,11 +254,12 @@ export default {
         unique: true,
         reason: `Permanent invite created by /post_ready for ${interaction.user.tag}`
       });
+      const collageFile = await createPhotoCollage(photoUrls);
 
       message = await targetChannel.send({
         content: "Zenoria is ready:",
-        embeds: createReadyEmbeds(readyText, interaction.user, photoFiles),
-        files: photoFiles.map((photo) => photo.file),
+        embeds: [createReadyEmbed(readyText, interaction.user, collageFile)],
+        files: collageFile ? [collageFile] : [],
         components: [await createButtonRow(interaction.guild, invite.url)]
       });
 
@@ -239,7 +274,7 @@ export default {
       embeds: [
         successEmbed("Posted Ready Message", `Sent the ready embed in ${targetChannel}.`, [
           { name: "Message", value: `[Open message](${message.url})` },
-          { name: "Photos", value: photoFiles.length > 0 ? `Added ${photoFiles.length} photo(s).` : "No photos attached." },
+          { name: "Photos", value: photoUrls.length > 0 ? `Combined ${photoUrls.length} photo(s) into one embed image.` : "No photos attached." },
           { name: "Discord Invite", value: "Created as permanent with no expiry and unlimited uses." }
         ])
       ]
