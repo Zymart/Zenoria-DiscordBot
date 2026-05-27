@@ -257,7 +257,6 @@ export default {
       const collageFile = await createPhotoCollage(photoUrls);
 
       message = await targetChannel.send({
-        content: "Zenoria is ready:",
         embeds: [createReadyEmbed(readyText, interaction.user, collageFile)],
         files: collageFile ? [collageFile] : [],
         components: [await createButtonRow(interaction.guild, invite.url)]
