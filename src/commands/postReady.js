@@ -14,6 +14,7 @@ const postableChannelTypes = new Set([
   ChannelType.GuildText,
   ChannelType.GuildAnnouncement
 ]);
+const ROBLOX_GROUP_URL = "https://www.roblox.com/groups/437848777";
 const maxPhotoAttachments = 10;
 const imageExtensions = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
 
@@ -27,31 +28,6 @@ function validatePostChannel(channel) {
   }
 
   return channel;
-}
-
-function cleanUrlCandidate(value) {
-  return value.replace(/[),.>\]}]+$/g, "");
-}
-
-function findRobloxUrl(content) {
-  const matches = content.match(/https?:\/\/[^\s<]+/gi) ?? [];
-
-  for (const match of matches) {
-    const candidate = cleanUrlCandidate(match);
-
-    try {
-      const url = new URL(candidate);
-      const hostname = url.hostname.toLowerCase();
-
-      if (hostname === "roblox.com" || hostname.endsWith(".roblox.com")) {
-        return url.toString();
-      }
-    } catch {
-      // Keep scanning if one URL-like value is malformed.
-    }
-  }
-
-  return null;
 }
 
 function attachmentExtension(attachment) {
@@ -118,15 +94,31 @@ async function editWithError(interaction, message) {
   });
 }
 
-function createButtonRow(robloxUrl, inviteUrl) {
+async function resolveButtonEmoji(guild, patterns, fallback) {
+  const emojis = await guild.emojis.fetch().catch(() => guild.emojis.cache);
+  const emoji = emojis.find((candidate) =>
+    patterns.some((pattern) => pattern.test(candidate.name))
+  );
+
+  return emoji
+    ? { id: emoji.id, name: emoji.name, animated: emoji.animated }
+    : { name: fallback };
+}
+
+async function createButtonRow(guild, inviteUrl) {
+  const robloxEmoji = await resolveButtonEmoji(guild, [/roblox/i, /\brbx\b/i, /blox/i], "\u{1F3AE}");
+  const discordEmoji = await resolveButtonEmoji(guild, [/discord/i, /server/i, /invite/i], "\u{1F4AC}");
+
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setStyle(ButtonStyle.Link)
-      .setLabel("Roblox")
-      .setURL(robloxUrl),
+      .setLabel("Join our Roblox Group")
+      .setEmoji(robloxEmoji)
+      .setURL(ROBLOX_GROUP_URL),
     new ButtonBuilder()
       .setStyle(ButtonStyle.Link)
-      .setLabel("Discord Invite")
+      .setLabel("Join our Discord Server")
+      .setEmoji(discordEmoji)
       .setURL(inviteUrl)
   );
 }
@@ -149,7 +141,7 @@ export default {
     await ensureBotPermissions(interaction.guild, targetChannel);
 
     await interaction.reply({
-      content: "Send your ready message in this channel within 2 minutes. Include the Roblox link, and you can attach up to 10 photos.",
+      content: "Send your ready message in this channel within 2 minutes. You can attach up to 10 photos.",
       flags: MessageFlags.Ephemeral
     });
 
@@ -174,13 +166,6 @@ export default {
       return;
     }
 
-    const robloxUrl = findRobloxUrl(readyText);
-
-    if (!robloxUrl) {
-      await editWithError(interaction, "I could not find a roblox.com link in your message. Run /post_ready again and include the Roblox link.");
-      return;
-    }
-
     const photoFiles = createPhotoFiles(sourceMessage);
 
     if (photoFiles.length > 0) {
@@ -201,7 +186,10 @@ export default {
       const embed = createEmbed({
         title: "Zenoria Ready",
         description: readyText,
-        fields: [{ name: "Posted By", value: `${interaction.user}`, inline: true }]
+        fields: [
+          { name: "Posted By", value: `${interaction.user}`, inline: true },
+          { name: "Discord Invite", value: invite.url }
+        ]
       });
 
       if (photoFiles.length > 0) {
@@ -212,7 +200,7 @@ export default {
         content: "Zenoria is ready:",
         embeds: [embed],
         files: photoFiles.map((photo) => photo.file),
-        components: [createButtonRow(robloxUrl, invite.url)]
+        components: [await createButtonRow(interaction.guild, invite.url)]
       });
     } catch (error) {
       await editWithError(interaction, error.message || "I could not create the ready post.");

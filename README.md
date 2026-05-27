@@ -55,7 +55,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/pingverify` DMs members who still do not have the `Verified` role.
 - `/post_faq` posts or refreshes the FAQ dropdown panel.
 - `/post_link` posts the official Roblox group embed with a link button.
-- `/post_ready` prompts for your next message, extracts its Roblox link, keeps up to 10 attached photos, creates a permanent Discord invite, and posts an embed with link buttons.
+- `/post_ready` prompts for your next message, keeps up to 10 attached photos, uses the official Roblox group link, creates a permanent Discord invite, and posts an embed with link buttons.
 - `/post_update` posts an official update embed to the updates channel.
 - `/post_sneak` posts a spoilered sneak peek file to the sneak-peeks channel.
 - `/application_accept` accepts an application ticket, gives a role, and closes the ticket.
