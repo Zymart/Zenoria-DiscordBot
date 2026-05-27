@@ -12,7 +12,6 @@ const postableChannelTypes = new Set([
   ChannelType.GuildText,
   ChannelType.GuildAnnouncement
 ]);
-const ROBLOX_GROUP_URL = "https://www.roblox.com/groups/437848777";
 const maxPhotoAttachments = 10;
 const collageFileName = "ready-photos.jpg";
 const imageExtensions = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
@@ -20,10 +19,6 @@ const imageExtensions = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
 function validatePostChannel(channel) {
   if (!channel || !postableChannelTypes.has(channel.type) || typeof channel.send !== "function") {
     throw new Error("I can only post ready messages in a text or announcement channel.");
-  }
-
-  if (typeof channel.createInvite !== "function") {
-    throw new Error("I cannot create a Discord invite for that channel.");
   }
 
   return channel;
@@ -111,8 +106,7 @@ async function ensureBotPermissions(guild, channel, { withPhotos = false } = {})
   const needed = [
     PermissionFlagsBits.ViewChannel,
     PermissionFlagsBits.SendMessages,
-    PermissionFlagsBits.EmbedLinks,
-    PermissionFlagsBits.CreateInstantInvite
+    PermissionFlagsBits.EmbedLinks
   ];
 
   if (withPhotos) {
@@ -122,7 +116,7 @@ async function ensureBotPermissions(guild, channel, { withPhotos = false } = {})
   const missing = needed.filter((permission) => !permissions?.has(permission));
 
   if (missing.length > 0) {
-    const permissionNames = ["View Channel", "Send Messages", "Embed Links", "Create Instant Invite"];
+    const permissionNames = ["View Channel", "Send Messages", "Embed Links"];
 
     if (withPhotos) {
       permissionNames.push("Attach Files");
@@ -148,14 +142,10 @@ async function editWithError(interaction, message) {
   });
 }
 
-function createReadyEmbed(readyText, collageFile, inviteUrl) {
+function createReadyEmbed(readyText, collageFile) {
   const embed = createEmbed({
     title: "Zenoria Ready",
-    description: readyText,
-    fields: [
-      { name: "Join our Roblox Group", value: `[Open Roblox Group](${ROBLOX_GROUP_URL})`, inline: true },
-      { name: "Join our Discord Server", value: `[Open Discord Invite](${inviteUrl})`, inline: true }
-    ]
+    description: readyText
   });
 
   if (collageFile) {
@@ -168,7 +158,7 @@ function createReadyEmbed(readyText, collageFile, inviteUrl) {
 export default {
   data: new SlashCommandBuilder()
     .setName("post_ready")
-    .setDescription("Turn your next message into a ready embed with Roblox and Discord buttons.")
+    .setDescription("Turn your next message into a ready embed.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addChannelOption((option) =>
@@ -218,17 +208,10 @@ export default {
     let message;
 
     try {
-      const invite = await targetChannel.createInvite({
-        maxAge: 0,
-        maxUses: 0,
-        temporary: false,
-        unique: true,
-        reason: `Permanent invite created by /post_ready for ${interaction.user.tag}`
-      });
       const collageFile = await createPhotoCollage(photoUrls);
 
       message = await targetChannel.send({
-        embeds: [createReadyEmbed(readyText, collageFile, invite.url)],
+        embeds: [createReadyEmbed(readyText, collageFile)],
         files: collageFile ? [collageFile] : []
       });
 
@@ -242,9 +225,8 @@ export default {
       content: "",
       embeds: [
         successEmbed("Posted Ready Message", `Sent the ready embed in ${targetChannel}.`, [
-          { name: "Message", value: `[Open message](${message.url})` },
-          { name: "Photos", value: photoUrls.length > 0 ? `Combined ${photoUrls.length} photo(s) into one embed image.` : "No photos attached." },
-          { name: "Discord Invite", value: "Created as permanent with no expiry and unlimited uses." }
+          { name: "Message ID", value: message.id },
+          { name: "Photos", value: photoUrls.length > 0 ? `Combined ${photoUrls.length} photo(s) into one embed image.` : "No photos attached." }
         ])
       ]
     });
