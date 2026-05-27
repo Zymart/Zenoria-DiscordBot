@@ -4,10 +4,12 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  EmbedBuilder,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder
 } from "discord.js";
+import { config } from "../config.js";
 import { createEmbed, errorEmbed, successEmbed } from "../utils/embeds.js";
 
 const postableChannelTypes = new Set([
@@ -79,11 +81,22 @@ async function ensureBotPermissions(guild, channel, { withPhotos = false } = {})
   const missing = needed.filter((permission) => !permissions?.has(permission));
 
   if (missing.length > 0) {
-    const permissionList = withPhotos
-      ? "View Channel, Send Messages, Embed Links, Create Instant Invite, and Attach Files"
-      : "View Channel, Send Messages, Embed Links, and Create Instant Invite";
+    const permissionNames = ["View Channel", "Send Messages", "Embed Links", "Create Instant Invite"];
 
-    throw new Error(`I need ${permissionList} in ${channel}.`);
+    if (withPhotos) {
+      permissionNames.push("Attach Files");
+    }
+
+    throw new Error(`I need ${permissionNames.join(", ")} in ${channel}.`);
+  }
+}
+
+async function ensureBotCanDeleteMessages(guild, channel) {
+  const botMember = guild.members.me ?? await guild.members.fetchMe();
+  const permissions = channel.permissionsFor(botMember);
+
+  if (!permissions?.has(PermissionFlagsBits.ManageMessages)) {
+    throw new Error(`I need Manage Messages in ${channel} so I can delete the original post message after copying it.`);
   }
 }
 
@@ -123,6 +136,30 @@ async function createButtonRow(guild, inviteUrl) {
   );
 }
 
+function createReadyEmbeds(readyText, user, photoFiles) {
+  const embeds = [
+    createEmbed({
+      title: "Zenoria Ready",
+      description: readyText,
+      fields: [{ name: "Posted By", value: `${user}`, inline: true }]
+    })
+  ];
+
+  if (photoFiles.length > 0) {
+    embeds[0].setImage(`attachment://${photoFiles[0].name}`);
+  }
+
+  for (const photo of photoFiles.slice(1)) {
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(config.embedColor)
+        .setImage(`attachment://${photo.name}`)
+    );
+  }
+
+  return embeds;
+}
+
 export default {
   data: new SlashCommandBuilder()
     .setName("post_ready")
@@ -139,6 +176,7 @@ export default {
   async execute(interaction) {
     const targetChannel = validatePostChannel(interaction.options.getChannel("channel") ?? interaction.channel);
     await ensureBotPermissions(interaction.guild, targetChannel);
+    await ensureBotCanDeleteMessages(interaction.guild, interaction.channel);
 
     await interaction.reply({
       content: "Send your ready message in this channel within 2 minutes. You can attach up to 10 photos.",
@@ -183,25 +221,14 @@ export default {
         reason: `Permanent invite created by /post_ready for ${interaction.user.tag}`
       });
 
-      const embed = createEmbed({
-        title: "Zenoria Ready",
-        description: readyText,
-        fields: [
-          { name: "Posted By", value: `${interaction.user}`, inline: true },
-          { name: "Discord Invite", value: invite.url }
-        ]
-      });
-
-      if (photoFiles.length > 0) {
-        embed.setImage(`attachment://${photoFiles[0].name}`);
-      }
-
       message = await targetChannel.send({
         content: "Zenoria is ready:",
-        embeds: [embed],
+        embeds: createReadyEmbeds(readyText, interaction.user, photoFiles),
         files: photoFiles.map((photo) => photo.file),
         components: [await createButtonRow(interaction.guild, invite.url)]
       });
+
+      await sourceMessage.delete();
     } catch (error) {
       await editWithError(interaction, error.message || "I could not create the ready post.");
       return;
