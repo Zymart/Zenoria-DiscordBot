@@ -6,8 +6,9 @@ A Discord.js bot that builds a professional official Roblox game server structur
 
 - Node.js `22.12.0` or newer
 - A Discord bot with these scopes: `bot` and `applications.commands`
-- Bot permissions: `Administrator` is easiest for setup, or at minimum `Manage Roles`, `Manage Channels`, `Manage Server`, `Kick Members`, `Ban Members`, `Moderate Members`, `Manage Messages`, and `View Audit Log`
+- Bot permissions: `Administrator` is easiest for setup, or at minimum `Manage Roles`, `Manage Channels`, `Manage Server`, `Create Invite`, `Kick Members`, `Ban Members`, `Moderate Members`, `Manage Messages`, and `View Audit Log`
 - Enable the `Server Members Intent` in the Discord Developer Portal for welcome and verification role assignment
+- Enable the `Message Content Intent` in the Discord Developer Portal so `/post_ready` can read the message you send after the prompt
 
 ## Setup
 
@@ -54,6 +55,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/pingverify` DMs members who still do not have the `Verified` role.
 - `/post_faq` posts or refreshes the FAQ dropdown panel.
 - `/post_link` posts the official Roblox group embed with a link button.
+- `/post_ready` prompts for your next message, extracts its Roblox link, creates a permanent Discord invite, and posts an embed with link buttons.
 - `/post_update` posts an official update embed to the updates channel.
 - `/post_sneak` posts a spoilered sneak peek file to the sneak-peeks channel.
 - `/application_accept` accepts an application ticket, gives a role, and closes the ticket.

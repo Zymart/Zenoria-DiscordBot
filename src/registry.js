@@ -11,6 +11,7 @@ import memberInfo from "./commands/memberInfo.js";
 import postFaq from "./commands/postFaq.js";
 import pingVerify from "./commands/pingVerify.js";
 import postLink from "./commands/postLink.js";
+import postReady from "./commands/postReady.js";
 import postSneak from "./commands/postSneak.js";
 import postUpdate from "./commands/postUpdate.js";
 import purge from "./commands/purge.js";
@@ -39,6 +40,7 @@ export const commands = [
   pingVerify,
   postFaq,
   postLink,
+  postReady,
   postUpdate,
   postSneak,
   applicationAccept,
