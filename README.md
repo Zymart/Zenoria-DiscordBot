@@ -45,7 +45,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 ## Commands
 
 - `/setup` creates the official server roles, categories, channels, permissions, verification panel, and ticket panel.
-- `/channels_setup` finds existing official channels, adds missing channels, syncs permissions, and removes deprecated `changelogs` / `game-news` channels.
+- `/channels_setup` finds existing official channels, adds missing channels including `finished-tasks`, syncs permissions, and removes deprecated `changelogs` / `game-news` channels.
 - `/role_permission` syncs current official channel permissions without creating or deleting channels.
 - `/add_role` adds a manageable role to a member.
 - `/remove_role` removes a manageable role from a member.
@@ -60,7 +60,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/post_sneak` posts a spoilered sneak peek file to the sneak-peeks channel.
 - `/application_accept` accepts an application ticket, gives a role, and closes the ticket.
 - `/application_deny` denies an application ticket and closes it.
-- `/task` creates a development task thread inside the matching specialty channel, pings the assigned role, and routes completed work to leadership approval.
+- `/task` creates a development task thread inside the matching specialty channel, pings the assigned role, routes completed work to leadership approval, and posts approved tasks in `finished-tasks`.
 - `/ticket create` opens a private support ticket.
 - `/ticket close` closes the current ticket channel.
 - `/member_info` shows useful member details.
@@ -79,6 +79,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - Development specialty channels only allow the matching specialty role plus `Lead Developer`, `Owner`, `Co-Owner`, and `Head Manager`.
 - Developer chat channels include `developer-chat`, `lead-dev-chat`, `programmer-chat`, `builder-chat`, and `creative-chat`.
 - Task threads ping the assigned dev role plus `Owner`, `Co-Owner`, `Head Manager`, and `Lead Developer` when created.
+- Approved tasks are announced in the `finished-tasks` development channel. Run `/channels_setup` to add that channel to an existing server.
 - The bot stores setup state and open ticket tracking in `data/state.json`.
 - The logging channel defaults to the styled `🧾・discord_logs`, which is created under the staff category.
 

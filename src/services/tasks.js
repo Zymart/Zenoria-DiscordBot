@@ -5,7 +5,6 @@ import {
   ChannelType,
   ThreadAutoArchiveDuration
 } from "discord.js";
-import { config } from "../config.js";
 import { getGuildState, updateGuildState } from "../data/store.js";
 import { createEmbed, errorEmbed, infoEmbed, successEmbed } from "../utils/embeds.js";
 import { sendLog } from "./logger.js";
@@ -22,6 +21,11 @@ export const taskRoleChoices = [
 ];
 
 const approvalRoleNames = ["Owner", "Co-Owner", "Head Manager", "Lead Developer"];
+
+const finishedTasksChannel = {
+  key: "finished-tasks",
+  names: ["✅・finished-tasks", "finished-tasks", "finish-tasks", "finish-task", "finished-task"]
+};
 
 const taskChannelByRole = {
   Programmer: {
@@ -112,6 +116,67 @@ async function findTaskChannel(guild, roleName) {
     [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type) &&
     normalizedNames.has(normalizeChannelName(channel.name))
   );
+}
+
+function isPostableTaskChannel(channel) {
+  return Boolean(
+    channel &&
+    [ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type) &&
+    typeof channel.send === "function"
+  );
+}
+
+async function findFinishedTasksChannel(guild) {
+  const state = await getGuildState(guild.id);
+  const configuredId = state.channels?.[finishedTasksChannel.key];
+  const configuredChannel =
+    configuredId &&
+    (guild.channels.cache.get(configuredId) ??
+      await guild.channels.fetch(configuredId).catch(() => null));
+
+  if (isPostableTaskChannel(configuredChannel)) return configuredChannel;
+
+  await guild.channels.fetch();
+
+  const normalizedNames = new Set(finishedTasksChannel.names.map(normalizeChannelName));
+
+  return guild.channels.cache.find((channel) =>
+    isPostableTaskChannel(channel) &&
+    normalizedNames.has(normalizeChannelName(channel.name))
+  );
+}
+
+async function sendFinishedTaskAnnouncement(guild, task, thread, reviewer) {
+  const channel = await findFinishedTasksChannel(guild);
+
+  if (!channel) {
+    return { posted: false, channel: null };
+  }
+
+  const fields = [
+    { name: "Task", value: task.title, inline: true },
+    { name: "Assigned Role", value: task.roleId ? `<@&${task.roleId}>` : task.roleName, inline: true },
+    { name: "Completed By", value: task.completedBy ? `<@${task.completedBy}>` : "Unknown", inline: true },
+    { name: "Approved By", value: `${reviewer}`, inline: true },
+    { name: "Thread", value: `${thread}`, inline: true }
+  ];
+
+  if (task.due) {
+    fields.push({ name: "Due", value: task.due, inline: true });
+  }
+
+  await channel.send({
+    embeds: [
+      successEmbed(
+        "Finished Task",
+        task.details ? truncate(task.details, 1500) : "A completed task was approved by leadership.",
+        fields
+      )
+    ],
+    allowedMentions: { parse: [] }
+  });
+
+  return { posted: true, channel };
 }
 
 function hasRole(member, roleName) {
@@ -362,14 +427,54 @@ export async function reviewTask(guild, member, taskId, approved) {
     ]
   });
 
+  let finishedAnnouncement = { posted: false, channel: null };
+
+  if (approved) {
+    try {
+      finishedAnnouncement = await sendFinishedTaskAnnouncement(guild, task, thread, member);
+    } catch (error) {
+      finishedAnnouncement = { posted: false, channel: null, error };
+    }
+  }
+
+  const logFields = [{ name: "Thread", value: `${thread}`, inline: true }];
+
+  if (finishedAnnouncement.channel) {
+    logFields.push({ name: "Finished Channel", value: `${finishedAnnouncement.channel}`, inline: true });
+  }
+
+  if (finishedAnnouncement.error) {
+    logFields.push({
+      name: "Finished Post Error",
+      value: truncate(finishedAnnouncement.error.message || "Unknown error", 1024),
+      inline: false
+    });
+  }
+
   await sendLog(guild, {
     title: approved ? "Task Approved" : "Task Rejected",
     description: `${member.user.tag} ${approved ? "approved" : "rejected"} task "${task.title}".`,
-    fields: [{ name: "Thread", value: `${thread}`, inline: true }],
+    fields: logFields,
     color: approved ? 0x2ecc71 : 0xe74c3c
   });
 
-  return approved
-    ? successEmbed("Task Approved", "The task was approved.")
-    : errorEmbed("Task Rejected", "The assigned team can submit it again after fixing it.");
+  if (!approved) {
+    return errorEmbed("Task Rejected", "The assigned team can submit it again after fixing it.");
+  }
+
+  if (finishedAnnouncement.posted) {
+    return successEmbed("Task Approved", `The task was approved and posted in ${finishedAnnouncement.channel}.`);
+  }
+
+  if (finishedAnnouncement.error) {
+    return successEmbed(
+      "Task Approved",
+      `The task was approved, but I could not post it in the finished-tasks channel: ${finishedAnnouncement.error.message}`
+    );
+  }
+
+  return successEmbed(
+    "Task Approved",
+    "The task was approved. Run `/channels_setup` to create the finished-tasks channel for future announcements."
+  );
 }
