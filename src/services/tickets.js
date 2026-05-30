@@ -109,12 +109,145 @@ export function createApplicationTicketPanelRow() {
   );
 }
 
-export function createCloseTicketRow() {
+function createTicketResolutionRow() {
   return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("ticket:resolution:accept")
+      .setLabel("Accept")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("ticket:resolution:reject")
+      .setLabel("Reject")
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+function ticketResolutionEnabled(ticket) {
+  return ticket.resolutionEnabled !== false;
+}
+
+export function createCloseTicketRow(ticket = {}) {
+  const row = new ActionRowBuilder();
+
+  if (ticketResolutionEnabled(ticket)) {
+    if (ticket.handledBy) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId("ticket:done")
+          .setLabel(ticket.resolutionMessageId ? "Waiting For Member" : "Done")
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(Boolean(ticket.resolutionMessageId))
+      );
+    } else {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId("ticket:handle")
+          .setLabel("Handle Ticket")
+          .setStyle(ButtonStyle.Primary)
+      );
+    }
+  }
+
+  row.addComponents(
     new ButtonBuilder()
       .setCustomId("ticket:close")
       .setLabel("Close Ticket")
       .setStyle(ButtonStyle.Danger)
+  );
+
+  return row;
+}
+
+function inferOwnerIdFromTopic(channel) {
+  const topicMatch = channel.topic?.match(/\((\d{17,20})\)/);
+  return topicMatch?.[1] ?? null;
+}
+
+function findTicketOwnerEntry(state, channel) {
+  return Object.entries(state.tickets.openByUser).find(([, channelId]) => channelId === channel.id);
+}
+
+function defaultResolutionEnabled(channel) {
+  return !channel.name.includes("apply-") && !channel.topic?.startsWith("Application Ticket");
+}
+
+function normalizeTicketMeta(channel, ownerId, meta = {}) {
+  return {
+    channelId: channel.id,
+    ownerId,
+    title: meta.title ?? "Support Ticket",
+    intro: meta.intro ?? "A staff member will help you here. Use the button below when this ticket is finished.",
+    reason: meta.reason ?? "No reason provided",
+    messageId: meta.messageId ?? null,
+    handledBy: meta.handledBy ?? null,
+    resolutionMessageId: meta.resolutionMessageId ?? null,
+    resolutionEnabled: meta.resolutionEnabled ?? defaultResolutionEnabled(channel),
+    createdAt: meta.createdAt ?? null
+  };
+}
+
+async function getTicketInfo(guild, channel) {
+  const state = await getGuildState(guild.id);
+  const ownerEntry = findTicketOwnerEntry(state, channel);
+  const storedMeta = state.tickets.metaByChannel[channel.id] ?? {};
+  const ownerId = storedMeta.ownerId ?? ownerEntry?.[0] ?? inferOwnerIdFromTopic(channel);
+  const isTicketChannel =
+    Boolean(ownerEntry) ||
+    Boolean(storedMeta.channelId) ||
+    channel.name.includes("ticket-") ||
+    channel.name.includes("apply-");
+
+  return {
+    state,
+    ownerEntry,
+    ownerId,
+    isTicketChannel,
+    meta: normalizeTicketMeta(channel, ownerId, storedMeta)
+  };
+}
+
+function createTicketEmbed(ticket) {
+  const fields = [
+    { name: "Opened By", value: ticket.ownerId ? `<@${ticket.ownerId}>` : "Unknown", inline: true }
+  ];
+
+  if (ticketResolutionEnabled(ticket)) {
+    fields.push({
+      name: "Handled By",
+      value: ticket.handledBy ? `<@${ticket.handledBy}>` : "Not claimed",
+      inline: true
+    });
+  }
+
+  if (ticket.resolutionMessageId) {
+    fields.push({ name: "Status", value: "Waiting for member confirmation", inline: true });
+  }
+
+  fields.push({ name: "Reason", value: ticket.reason.slice(0, 1024), inline: false });
+
+  return infoEmbed(ticket.title, ticket.intro, fields);
+}
+
+async function refreshTicketMessage(channel, ticket) {
+  if (!ticket.messageId) return false;
+
+  const message = await channel.messages.fetch(ticket.messageId).catch(() => null);
+  if (!message) return false;
+
+  await message.edit({
+    embeds: [createTicketEmbed(ticket)],
+    components: [createCloseTicketRow(ticket)]
+  }).catch(() => null);
+
+  return true;
+}
+
+function memberCanHandleTicket(member) {
+  return (
+    member.id === member.guild.ownerId ||
+    member.permissions.has(PermissionFlagsBits.Administrator) ||
+    member.permissions.has(PermissionFlagsBits.ManageChannels) ||
+    memberHasSupportRole(member)
   );
 }
 
@@ -126,7 +259,8 @@ export async function createTicket(
     title = "Support Ticket",
     intro = "A staff member will help you here. Use the button below when this ticket is finished.",
     channelPrefix = "ticket",
-    mentionRoleNames = []
+    mentionRoleNames = [],
+    resolutionEnabled = true
   } = {}
 ) {
   const state = await getGuildState(guild.id);
@@ -161,25 +295,36 @@ export async function createTicket(
     reason: `Ticket opened by ${member.user.tag}: ${reason}`
   });
 
-  await updateGuildState(guild.id, (guildState) => {
-    guildState.tickets.openByUser[member.id] = channel.id;
-  });
-
   const mentionRoles = getRolesByName(guild, mentionRoleNames);
+  const ticketMeta = {
+    channelId: channel.id,
+    ownerId: member.id,
+    title,
+    intro,
+    reason,
+    messageId: null,
+    handledBy: null,
+    resolutionMessageId: null,
+    resolutionEnabled,
+    createdAt: new Date().toISOString()
+  };
 
-  await channel.send({
+  const ticketMessage = await channel.send({
     content: [member, ...mentionRoles].map((mentionable) => `${mentionable}`).join(" "),
-    embeds: [
-      infoEmbed(title, intro, [
-        { name: "Opened By", value: `${member}`, inline: true },
-        { name: "Reason", value: reason.slice(0, 1024), inline: false }
-      ])
-    ],
-    components: [createCloseTicketRow()],
+    embeds: [createTicketEmbed(ticketMeta)],
+    components: [createCloseTicketRow(ticketMeta)],
     allowedMentions: {
       users: [member.id],
       roles: mentionRoles.map((role) => role.id)
     }
+  });
+
+  await updateGuildState(guild.id, (guildState) => {
+    guildState.tickets.openByUser[member.id] = channel.id;
+    guildState.tickets.metaByChannel[channel.id] = {
+      ...ticketMeta,
+      messageId: ticketMessage.id
+    };
   });
 
   await sendLog(guild, {
@@ -201,7 +346,8 @@ export function createApplicationTicket(guild, member) {
     title: "Application Ticket",
     intro: "Thanks for applying. Share what role you want, your experience, examples of your work, and anything else staff should know.",
     channelPrefix: "apply",
-    mentionRoleNames: roleGroups.ownership
+    mentionRoleNames: roleGroups.ownership,
+    resolutionEnabled: false
   });
 }
 
@@ -212,15 +358,11 @@ function memberHasSupportRole(member) {
 }
 
 export async function closeTicket(guild, channel, member, reason = "No reason provided") {
-  const state = await getGuildState(guild.id);
-  const ownerEntry = Object.entries(state.tickets.openByUser).find(
-    ([, channelId]) => channelId === channel.id
-  );
-  const isTicketChannel = Boolean(ownerEntry) || channel.name.includes("ticket-");
+  const { ownerEntry, ownerId, isTicketChannel } = await getTicketInfo(guild, channel);
   const canClose =
     member.permissions.has(PermissionFlagsBits.ManageChannels) ||
     memberHasSupportRole(member) ||
-    ownerEntry?.[0] === member.id;
+    ownerId === member.id;
 
   if (!isTicketChannel) {
     throw new Error("This command can only be used inside a ticket channel.");
@@ -234,6 +376,7 @@ export async function closeTicket(guild, channel, member, reason = "No reason pr
     if (ownerEntry) {
       delete guildState.tickets.openByUser[ownerEntry[0]];
     }
+    delete guildState.tickets.metaByChannel[channel.id];
   });
 
   await sendLog(guild, {
@@ -254,4 +397,142 @@ export async function closeTicket(guild, channel, member, reason = "No reason pr
   }, 5000);
 
   return successEmbed("Ticket Closed", "The ticket is being closed.");
+}
+
+export async function handleTicket(guild, channel, member) {
+  const { ownerId, isTicketChannel, meta } = await getTicketInfo(guild, channel);
+
+  if (!isTicketChannel) {
+    throw new Error("This button can only be used inside a ticket channel.");
+  }
+
+  if (!ticketResolutionEnabled(meta)) {
+    throw new Error("Application tickets use the application accept and deny commands.");
+  }
+
+  if (!memberCanHandleTicket(member)) {
+    throw new Error("Only staff or support can handle tickets.");
+  }
+
+  if (meta.handledBy && meta.handledBy !== member.id) {
+    throw new Error(`This ticket is already handled by <@${meta.handledBy}>.`);
+  }
+
+  const updatedMeta = {
+    ...meta,
+    ownerId,
+    handledBy: member.id
+  };
+
+  await updateGuildState(guild.id, (guildState) => {
+    guildState.tickets.metaByChannel[channel.id] = updatedMeta;
+  });
+
+  await refreshTicketMessage(channel, updatedMeta);
+  await sendLog(guild, {
+    title: "Ticket Claimed",
+    description: `${member.user.tag} is handling ${channel}.`,
+    color: 0x3498db
+  });
+
+  return successEmbed("Ticket Claimed", `You are now handling ${channel}.`);
+}
+
+export async function markTicketDone(guild, channel, member) {
+  const { ownerId, isTicketChannel, meta } = await getTicketInfo(guild, channel);
+
+  if (!isTicketChannel) {
+    throw new Error("This button can only be used inside a ticket channel.");
+  }
+
+  if (!ticketResolutionEnabled(meta)) {
+    throw new Error("Application tickets use the application accept and deny commands.");
+  }
+
+  if (!meta.handledBy) {
+    throw new Error("Claim this ticket before marking it done.");
+  }
+
+  if (meta.handledBy !== member.id) {
+    throw new Error(`Only <@${meta.handledBy}> can mark this ticket done because they are handling it.`);
+  }
+
+  if (!ownerId) {
+    throw new Error("I could not tell who owns this ticket.");
+  }
+
+  if (meta.resolutionMessageId) {
+    return infoEmbed("Already Waiting", "The ticket owner already has an accept or reject prompt.");
+  }
+
+  const resolutionMessage = await channel.send({
+    content: `<@${ownerId}>`,
+    embeds: [
+      infoEmbed("Ticket Ready To Close", `${member} marked this ticket as done. Accept to close it, or reject to keep working in this ticket.`, [
+        { name: "Handled By", value: `${member}`, inline: true }
+      ])
+    ],
+    components: [createTicketResolutionRow()],
+    allowedMentions: { users: [ownerId], roles: [] }
+  });
+
+  const updatedMeta = {
+    ...meta,
+    ownerId,
+    resolutionMessageId: resolutionMessage.id
+  };
+
+  await updateGuildState(guild.id, (guildState) => {
+    guildState.tickets.metaByChannel[channel.id] = updatedMeta;
+  });
+
+  await refreshTicketMessage(channel, updatedMeta);
+  await sendLog(guild, {
+    title: "Ticket Marked Done",
+    description: `${member.user.tag} marked ${channel} done and requested member confirmation.`,
+    color: 0x2ecc71
+  });
+
+  return successEmbed("Ticket Done", "The ticket owner was asked to accept or reject the resolution.");
+}
+
+export async function reviewTicketResolution(guild, channel, member, accepted, resolutionMessage = null) {
+  const { ownerId, isTicketChannel, meta } = await getTicketInfo(guild, channel);
+
+  if (!isTicketChannel) {
+    throw new Error("This button can only be used inside a ticket channel.");
+  }
+
+  if (ownerId !== member.id) {
+    throw new Error("Only the ticket owner can accept or reject this resolution.");
+  }
+
+  const messageId = meta.resolutionMessageId ?? resolutionMessage?.id;
+  const promptMessage = resolutionMessage ??
+    (messageId ? await channel.messages.fetch(messageId).catch(() => null) : null);
+
+  await promptMessage?.delete().catch(() => null);
+
+  const updatedMeta = {
+    ...meta,
+    ownerId,
+    resolutionMessageId: null
+  };
+
+  await updateGuildState(guild.id, (guildState) => {
+    guildState.tickets.metaByChannel[channel.id] = updatedMeta;
+  });
+
+  if (accepted) {
+    return closeTicket(guild, channel, member, "Ticket marked done and accepted by the ticket owner");
+  }
+
+  await refreshTicketMessage(channel, updatedMeta);
+  await sendLog(guild, {
+    title: "Ticket Resolution Rejected",
+    description: `${member.user.tag} rejected the resolution for ${channel}.`,
+    color: 0xe74c3c
+  });
+
+  return infoEmbed("Ticket Returned", "The accept or reject prompt was removed and the ticket is open again.");
 }

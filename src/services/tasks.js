@@ -187,6 +187,54 @@ function canApprove(member) {
   return approvalRoleNames.some((roleName) => hasRole(member, roleName));
 }
 
+function taskStatusLabel(status) {
+  switch (status) {
+    case "pending_approval":
+      return "Awaiting approval";
+    case "approved":
+      return "Approved";
+    case "rejected":
+      return "Needs changes";
+    default:
+      return "Open";
+  }
+}
+
+function getTaskHandlerId(task) {
+  return task.handledBy ?? task.completedBy ?? null;
+}
+
+function buildTaskEmbed(guild, task) {
+  const assignedRole = task.roleId ? `<@&${task.roleId}>` : task.roleName;
+  const leadershipRoles = getApprovalRoles(guild);
+  const leadershipMentions = leadershipRoles.map((role) => `${role}`).join(" ");
+  const fields = [
+    { name: "Assigned Role", value: assignedRole, inline: true },
+    { name: "Created By", value: `<@${task.createdBy}>`, inline: true },
+    { name: "Status", value: taskStatusLabel(task.status), inline: true },
+    {
+      name: "Leadership",
+      value: leadershipMentions || "Owner, Co-Owner, Head Manager, Lead Developer",
+      inline: false
+    }
+  ];
+
+  if (task.due) {
+    fields.push({ name: "Due", value: task.due, inline: true });
+  }
+
+  const handlerId = getTaskHandlerId(task);
+  if (handlerId) {
+    fields.push({ name: "Handled By", value: `<@${handlerId}>`, inline: true });
+  }
+
+  return createEmbed({
+    title: `Task: ${task.title}`,
+    description: task.details,
+    fields
+  });
+}
+
 function doneButton(taskId, { disabled = false, label = "Done" } = {}) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -234,14 +282,19 @@ async function fetchThread(guild, task) {
   return channel;
 }
 
-async function editTaskMessage(guild, task, row) {
+async function editTaskMessage(guild, task, row, { refreshEmbed = false } = {}) {
   const thread = await fetchThread(guild, task).catch(() => null);
   if (!thread) return;
 
   const message = await thread.messages.fetch(task.messageId).catch(() => null);
   if (!message) return;
 
-  await message.edit({ components: [row] }).catch(() => null);
+  const payload = { components: [row] };
+  if (refreshEmbed) {
+    payload.embeds = [buildTaskEmbed(guild, task)];
+  }
+
+  await message.edit(payload).catch(() => null);
 }
 
 function validateTaskChannel(channel) {
@@ -272,49 +325,32 @@ export async function createTaskThread(guild, actor, { roleName, title, details,
     reason: `${actor.tag} created a Zenoria task`
   });
   const leadershipRoles = getApprovalRoles(guild);
-  const leadershipMentions = leadershipRoles.map((role) => `${role}`).join(" ");
   const mentionRoleIds = [assignedRole.id, ...leadershipRoles.map((role) => role.id)];
-  const fields = [
-    { name: "Assigned Role", value: `${assignedRole}`, inline: true },
-    { name: "Created By", value: `${actor}`, inline: true },
-    {
-      name: "Leadership",
-      value: leadershipMentions || "Owner, Co-Owner, Head Manager, Lead Developer",
-      inline: false
-    }
-  ];
-
-  if (due) {
-    fields.push({ name: "Due", value: due, inline: true });
-  }
+  const taskDraft = {
+    id: taskId,
+    title,
+    details,
+    due: due ?? null,
+    roleName,
+    roleId: assignedRole.id,
+    status: "open",
+    createdBy: actor.id,
+    createdAt: new Date().toISOString()
+  };
 
   const taskMessage = await thread.send({
     content: [assignedRole, ...leadershipRoles].map((role) => `${role}`).join(" "),
-    embeds: [
-      createEmbed({
-        title: `Task: ${title}`,
-        description: details,
-        fields
-      })
-    ],
+    embeds: [buildTaskEmbed(guild, taskDraft)],
     components: [doneButton(taskId)],
     allowedMentions: { roles: mentionRoleIds, users: [actor.id] }
   });
 
   await updateGuildState(guild.id, (guildState) => {
     guildState.tasks.items[taskId] = {
-      id: taskId,
-      title,
-      details,
-      due: due ?? null,
-      roleName,
-      roleId: assignedRole.id,
+      ...taskDraft,
       channelId: channel.id,
       threadId: thread.id,
       messageId: taskMessage.id,
-      status: "open",
-      createdBy: actor.id,
-      createdAt: new Date().toISOString()
     };
   });
 
@@ -347,6 +383,11 @@ export async function submitTaskForApproval(guild, member, taskId) {
     return successEmbed("Already Approved", "This task has already been approved.");
   }
 
+  const handlerId = getTaskHandlerId(task);
+  if (handlerId && handlerId !== member.id) {
+    throw new Error(`Only <@${handlerId}> can mark this task as done because they are handling it.`);
+  }
+
   if (!member.roles.cache.has(task.roleId) && !hasRole(member, task.roleName)) {
     throw new Error(`Only members with the ${task.roleName} role can mark this task as done.`);
   }
@@ -359,27 +400,30 @@ export async function submitTaskForApproval(guild, member, taskId) {
     embeds: [
       infoEmbed("Task Ready For Approval", `${member} marked this task as done. Owner, Co-Owner, Head Manager, or Lead Developer must approve it.`, [
         { name: "Task", value: task.title, inline: true },
-        { name: "Submitted By", value: `${member}`, inline: true }
+        { name: "Handled By", value: `${member}`, inline: true }
       ])
     ],
     components: [approvalButtons(taskId)],
     allowedMentions: { roles: approvalRoles.map((role) => role.id), users: [member.id] }
   });
 
+  const updatedTask = {
+    ...task,
+    status: "pending_approval",
+    handledBy: handlerId ?? member.id,
+    completedBy: member.id,
+    completedAt: new Date().toISOString(),
+    approvalMessageId: approvalMessage.id
+  };
+
   await updateGuildState(guild.id, (guildState) => {
-    guildState.tasks.items[taskId] = {
-      ...guildState.tasks.items[taskId],
-      status: "pending_approval",
-      completedBy: member.id,
-      completedAt: new Date().toISOString(),
-      approvalMessageId: approvalMessage.id
-    };
+    guildState.tasks.items[taskId] = updatedTask;
   });
 
-  await editTaskMessage(guild, task, doneButton(taskId, {
+  await editTaskMessage(guild, updatedTask, doneButton(taskId, {
     disabled: true,
     label: "Awaiting Approval"
-  }));
+  }), { refreshEmbed: true });
 
   return successEmbed("Sent For Approval", "The approval team has been pinged in the task thread.");
 }
@@ -399,39 +443,47 @@ export async function reviewTask(guild, member, taskId, approved) {
 
   const thread = await fetchThread(guild, task);
   const nextStatus = approved ? "approved" : "rejected";
+  const updatedTask = {
+    ...task,
+    status: nextStatus,
+    reviewedBy: member.id,
+    reviewedAt: new Date().toISOString(),
+    approvalMessageId: null
+  };
 
   await updateGuildState(guild.id, (guildState) => {
-    guildState.tasks.items[taskId] = {
-      ...guildState.tasks.items[taskId],
-      status: nextStatus,
-      reviewedBy: member.id,
-      reviewedAt: new Date().toISOString()
-    };
+    guildState.tasks.items[taskId] = updatedTask;
   });
 
   if (task.approvalMessageId) {
     const approvalMessage = await thread.messages.fetch(task.approvalMessageId).catch(() => null);
-    await approvalMessage?.edit({ components: [approvalButtons(taskId, { disabled: true })] }).catch(() => null);
+    await approvalMessage?.delete().catch(() => null);
   }
 
-  await editTaskMessage(guild, task, doneButton(taskId, {
+  await editTaskMessage(guild, updatedTask, doneButton(taskId, {
     disabled: approved,
     label: approved ? "Approved" : "Done"
-  }));
+  }), { refreshEmbed: true });
+
+  const handlerId = getTaskHandlerId(updatedTask);
+  const rejectedMessage = handlerId
+    ? `${member} rejected this task. <@${handlerId}> can mark it done again after fixing it.`
+    : `${member} rejected this task. The assigned team can mark it done again after fixing it.`;
 
   await thread.send({
     embeds: [
       approved
         ? successEmbed("Task Approved", `${member} approved this task.`)
-        : errorEmbed("Task Rejected", `${member} rejected this task. The assigned team can mark it done again after fixing it.`)
-    ]
+        : errorEmbed("Task Rejected", rejectedMessage)
+    ],
+    allowedMentions: handlerId ? { users: [handlerId] } : { parse: [] }
   });
 
   let finishedAnnouncement = { posted: false, channel: null };
 
   if (approved) {
     try {
-      finishedAnnouncement = await sendFinishedTaskAnnouncement(guild, task, thread, member);
+      finishedAnnouncement = await sendFinishedTaskAnnouncement(guild, updatedTask, thread, member);
     } catch (error) {
       finishedAnnouncement = { posted: false, channel: null, error };
     }
@@ -459,7 +511,12 @@ export async function reviewTask(guild, member, taskId, approved) {
   });
 
   if (!approved) {
-    return errorEmbed("Task Rejected", "The assigned team can submit it again after fixing it.");
+    return errorEmbed(
+      "Task Rejected",
+      handlerId
+        ? `<@${handlerId}> can submit it again after fixing it.`
+        : "The assigned team can submit it again after fixing it."
+    );
   }
 
   if (finishedAnnouncement.posted) {

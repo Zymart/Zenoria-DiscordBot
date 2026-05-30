@@ -1,5 +1,12 @@
 import { Events, MessageFlags } from "discord.js";
-import { closeTicket, createApplicationTicket, createTicket } from "../services/tickets.js";
+import {
+  closeTicket,
+  createApplicationTicket,
+  createTicket,
+  handleTicket,
+  markTicketDone,
+  reviewTicketResolution
+} from "../services/tickets.js";
 import { reviewTask, submitTaskForApproval } from "../services/tasks.js";
 import { verifyMember } from "../services/verification.js";
 import { faqSelectId, handleFaqSelect } from "../services/faq.js";
@@ -58,6 +65,34 @@ export function registerInteractionCreate(client) {
         if (interaction.customId === "ticket:close") {
           await interaction.deferReply({ flags: MessageFlags.Ephemeral });
           const embed = await closeTicket(interaction.guild, interaction.channel, member, "Closed with ticket button");
+          await interaction.editReply({ embeds: [embed] });
+          return;
+        }
+
+        if (interaction.customId === "ticket:handle") {
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+          const embed = await handleTicket(interaction.guild, interaction.channel, member);
+          await interaction.editReply({ embeds: [embed] });
+          return;
+        }
+
+        if (interaction.customId === "ticket:done") {
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+          const embed = await markTicketDone(interaction.guild, interaction.channel, member);
+          await interaction.editReply({ embeds: [embed] });
+          return;
+        }
+
+        if (interaction.customId.startsWith("ticket:resolution:")) {
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+          const accepted = interaction.customId.endsWith(":accept");
+          const embed = await reviewTicketResolution(
+            interaction.guild,
+            interaction.channel,
+            member,
+            accepted,
+            interaction.message
+          );
           await interaction.editReply({ embeds: [embed] });
           return;
         }
