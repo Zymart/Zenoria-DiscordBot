@@ -1,5 +1,6 @@
-import { AttachmentBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { listSavedFiles } from "../services/storage.js";
+import { createEmbed } from "../utils/embeds.js";
 
 function formatBytes(value) {
   const bytes = Number(value);
@@ -9,10 +10,42 @@ function formatBytes(value) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatSavedFiles(files) {
-  return files
-    .map((file, index) => `${index + 1}. ${file.name} (${formatBytes(file.size)})\ncopy name: \`${file.path}\``)
-    .join("\n\n");
+function groupFilesByFolder(files) {
+  const groups = new Map();
+
+  for (const file of files) {
+    if (!groups.has(file.folder)) groups.set(file.folder, []);
+    groups.get(file.folder).push(file);
+  }
+
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+}
+
+function createFileField(file) {
+  const fileName = file.name.length > 220 ? `${file.name.slice(0, 217)}...` : file.name;
+
+  return {
+    name: `${fileName} (${formatBytes(file.size)})`,
+    value: `Storage Name\n\`${file.path}\``,
+    inline: false
+  };
+}
+
+function createSavedListEmbeds(files) {
+  const embeds = [];
+
+  for (const [folder, folderFiles] of groupFilesByFolder(files)) {
+    for (let index = 0; index < folderFiles.length; index += 10) {
+      const batch = folderFiles.slice(index, index + 10);
+      embeds.push(createEmbed({
+        title: `Saved Files: ${folder}`,
+        description: "Top line is the visible file name. Copy the Storage Name into `/getfile filename:`.",
+        fields: batch.map(createFileField)
+      }));
+    }
+  }
+
+  return embeds.slice(0, 10);
 }
 
 export default {
@@ -50,21 +83,6 @@ export default {
       return;
     }
 
-    const listText = formatSavedFiles(files);
-    const message = `Copy the copy name into \`/getfile filename:\`.\n\n${listText}`;
-
-    if (message.length <= 1900) {
-      await interaction.editReply(message);
-      return;
-    }
-
-    const attachment = new AttachmentBuilder(Buffer.from(listText, "utf8"), {
-      name: "saved-files.txt"
-    });
-
-    await interaction.editReply({
-      content: "The saved file list is long, so I attached it as a text file. Copy a `copy name` into `/getfile filename:`.",
-      files: [attachment]
-    });
+    await interaction.editReply({ embeds: createSavedListEmbeds(files) });
   }
 };

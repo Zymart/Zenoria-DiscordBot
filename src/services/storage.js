@@ -88,6 +88,7 @@ function createStorageMetadata(attachment, options) {
     Object.entries({
       discordAttachmentId: attachment.id,
       discordAttachmentName: attachment.name,
+      displayName: options.fileName ?? attachment.name,
       discordAttachmentSize: attachment.size,
       uploadedBy: options.userId,
       guildId: options.guildId
@@ -121,6 +122,23 @@ export async function uploadDiscordAttachment(attachment, options = {}) {
     path: data.path,
     url: await createAccessibleUrl(bucket, data.path)
   };
+}
+
+function storageNameFromPath(storagePath) {
+  return safeLocalFileName(storagePath.split("/").at(-1), "download.bin");
+}
+
+function stripGeneratedPrefix(fileName) {
+  return fileName.replace(/^\d+-[0-9a-f-]{36}-/i, "");
+}
+
+function metadataValue(metadata, keys) {
+  for (const key of keys) {
+    const value = metadata?.[key] ?? metadata?.metadata?.[key];
+    if (value) return String(value);
+  }
+
+  return null;
 }
 
 function taskRecordPath(guildId, taskId) {
@@ -168,8 +186,14 @@ export async function deleteTaskRecord(guildId, taskId) {
   return { path: recordPath };
 }
 
-function fileDisplayName(storagePath) {
-  return safeLocalFileName(storagePath.split("/").at(-1), "download.bin");
+function fileDisplayName(storagePath, metadata) {
+  return metadataValue(metadata, ["displayName", "savedFileName", "discordAttachmentName"]) ??
+    stripGeneratedPrefix(storageNameFromPath(storagePath));
+}
+
+function folderNameFromPath(storagePath) {
+  const parts = storagePath.split("/");
+  return parts.length > 1 ? parts[1] : "root";
 }
 
 async function listFolder(bucket, folder, files, options) {
@@ -195,7 +219,9 @@ async function listFolder(bucket, folder, files, options) {
       }
 
       files.push({
-        name: fileDisplayName(itemPath),
+        name: fileDisplayName(itemPath, item.metadata),
+        storageName: storageNameFromPath(itemPath),
+        folder: folderNameFromPath(itemPath),
         path: itemPath,
         size: item.metadata?.size,
         contentType: item.metadata?.mimetype,
@@ -231,6 +257,38 @@ export async function listSavedFiles(options = {}) {
   return filteredFiles
     .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")))
     .slice(0, options.limit ?? 25);
+}
+
+export async function listSavedFolders(options = {}) {
+  const bucket = requireStorageBucket();
+  const guildPrefix = cleanPathPart(options.guildId, "guild");
+  const { data, error } = await bucket.list(guildPrefix, {
+    limit: 100,
+    sortBy: { column: "name", order: "asc" }
+  });
+
+  if (error) throw error;
+
+  const folders = (data ?? [])
+    .filter((item) => item.id === null)
+    .map((item) => item.name)
+    .filter((name) => name !== "tasks");
+
+  return [...new Set(["savefile", ...folders])];
+}
+
+export async function getSavedFileChoices(options = {}) {
+  const focused = String(options.search || "").toLowerCase();
+  const files = await listSavedFiles({
+    guildId: options.guildId,
+    search: focused || undefined,
+    limit: 25
+  });
+
+  return files.map((file) => ({
+    name: `${file.name} - ${file.folder}`,
+    value: file.path
+  })).slice(0, 25);
 }
 
 export async function resolveSavedFilePath(filename, options = {}) {
@@ -277,6 +335,21 @@ export async function downloadStorageFile(storagePath, options = {}) {
     buffer,
     bytes: buffer.byteLength
   };
+}
+
+export async function deleteSavedFile(storagePath, options = {}) {
+  const bucket = requireStorageBucket();
+  const resolvedPath = await resolveSavedFilePath(storagePath, options);
+
+  if (resolvedPath.includes("/tasks/")) {
+    throw new Error("Task records are managed by the task approval flow and cannot be deleted with /deletesavedfile.");
+  }
+
+  const { error } = await bucket.remove([resolvedPath]);
+
+  if (error) throw error;
+
+  return { path: resolvedPath };
 }
 
 function safeLocalFileName(value, fallback) {

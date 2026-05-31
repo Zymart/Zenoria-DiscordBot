@@ -5,6 +5,7 @@ import applicationDeny from "./commands/applicationDeny.js";
 import ban from "./commands/ban.js";
 import channelsSetup from "./commands/channelsSetup.js";
 import cleanUnverifiedDevs from "./commands/cleanUnverifiedDevs.js";
+import deleteSavedFile from "./commands/deleteSavedFile.js";
 import getFile from "./commands/getFile.js";
 import kick from "./commands/kick.js";
 import lock from "./commands/lock.js";
@@ -43,6 +44,7 @@ export const commands = [
   saveFile,
   savedList,
   getFile,
+  deleteSavedFile,
   pingVerify,
   postFaq,
   postLink,

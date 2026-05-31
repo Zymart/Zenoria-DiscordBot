@@ -27,6 +27,15 @@ async function replyWithError(interaction, error) {
 export function registerInteractionCreate(client) {
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
+      if (interaction.isAutocomplete()) {
+        const command = client.commands.get(interaction.commandName);
+
+        if (command?.autocomplete) {
+          await command.autocomplete(interaction, client);
+        }
+        return;
+      }
+
       if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
 

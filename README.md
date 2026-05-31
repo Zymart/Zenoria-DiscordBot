@@ -40,7 +40,7 @@ A Discord.js bot that builds a professional official Roblox game server structur
 
 ### Optional Supabase Storage
 
-`/savefile upload` saves a Discord attachment to Supabase Storage. `/savedlist` shows copy names for saved files. `/getfile filename:<copy name>` sends a saved file back in Discord.
+`/savefile upload` saves a Discord attachment to Supabase Storage. `/savedlist` shows files grouped by folder with storage names. `/getfile filename:<storage name>` sends a saved file back in Discord.
 
 1. In Supabase, create a Storage bucket such as `discord-files`.
 2. Add these environment variables:
@@ -76,8 +76,9 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/post_update` posts an official update embed to the updates channel.
 - `/post_sneak` posts a spoilered sneak peek file to the sneak-peeks channel.
 - `/savefile upload` stores a Discord attachment in Supabase Storage.
-- `/savedlist` lists Supabase Storage files with copy names.
+- `/savedlist` lists Supabase Storage files by folder with visible file names and storage names.
 - `/getfile` sends a saved Supabase Storage file in Discord.
+- `/deletesavedfile` deletes a saved Supabase Storage file.
 - `/application_accept` accepts an application ticket, gives a role, and closes the ticket.
 - `/application_deny` denies an application ticket and closes it.
 - `/task` creates a development task thread inside the matching specialty channel, pings the assigned role, routes completed work to leadership approval, and posts approved tasks in `finished-tasks`.

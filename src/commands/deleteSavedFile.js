@@ -1,15 +1,16 @@
-import { AttachmentBuilder, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import { downloadStorageFile, getSavedFileChoices } from "../services/storage.js";
+import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { deleteSavedFile, getSavedFileChoices } from "../services/storage.js";
+import { successEmbed } from "../utils/embeds.js";
 
-function clipContent(value) {
+function clipField(value) {
   const text = String(value ?? "");
-  return text.length > 1800 ? `${text.slice(0, 1797)}...` : text;
+  return text.length > 1000 ? `${text.slice(0, 997)}...` : text;
 }
 
 export default {
   data: new SlashCommandBuilder()
-    .setName("getfile")
-    .setDescription("Send a saved Supabase Storage file.")
+    .setName("deletesavedfile")
+    .setDescription("Delete a saved file from Supabase Storage.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addStringOption((option) =>
@@ -21,19 +22,19 @@ export default {
         .setRequired(true)
     ),
   async execute(interaction) {
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const downloadedFile = await downloadStorageFile(
+    const deletedFile = await deleteSavedFile(
       interaction.options.getString("filename", true),
       { guildId: interaction.guild.id }
     );
-    const attachment = new AttachmentBuilder(downloadedFile.buffer, {
-      name: downloadedFile.name
-    });
 
     await interaction.editReply({
-      content: `Saved file: \`${clipContent(downloadedFile.path)}\``,
-      files: [attachment]
+      embeds: [
+        successEmbed("Saved File Deleted", "Deleted the file from Supabase Storage.", [
+          { name: "Storage Name", value: clipField(deletedFile.path) }
+        ])
+      ]
     });
   },
   async autocomplete(interaction) {

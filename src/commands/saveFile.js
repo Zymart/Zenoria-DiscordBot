@@ -1,5 +1,5 @@
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import { uploadDiscordAttachment } from "../services/storage.js";
+import { listSavedFolders, uploadDiscordAttachment } from "../services/storage.js";
 import { successEmbed } from "../utils/embeds.js";
 
 function clipField(value) {
@@ -32,6 +32,7 @@ export default {
             .setName("folder")
             .setDescription("Optional Supabase folder. Defaults to savefile.")
             .setMaxLength(100)
+            .setAutocomplete(true)
             .setRequired(false)
         )
         .addStringOption((option) =>
@@ -68,5 +69,15 @@ export default {
     }
 
     throw new Error("Unknown savefile action.");
+  },
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused().toLowerCase();
+    const folders = await listSavedFolders({ guildId: interaction.guild.id }).catch(() => ["savefile"]);
+    const choices = folders
+      .filter((folder) => folder.toLowerCase().includes(focused))
+      .slice(0, 25)
+      .map((folder) => ({ name: folder, value: folder }));
+
+    await interaction.respond(choices);
   }
 };
