@@ -41,8 +41,7 @@ export const config = {
     signedUrlExpiresIn: parsePositiveInteger(
       process.env.SUPABASE_SIGNED_URL_EXPIRES_SECONDS,
       60 * 60
-    ),
-    localDirectory: process.env.SAVEFILE_LOCAL_DIR || "./data/files"
+    )
   },
   setup: {
     verifiedRoleName: process.env.VERIFIED_ROLE_NAME ?? "Verified",

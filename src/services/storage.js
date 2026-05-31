@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { config } from "../config.js";
@@ -240,31 +239,4 @@ function safeLocalFileName(value, fallback) {
     .replace(/^-+|-+$/g, "");
 
   return cleaned || fallback;
-}
-
-function localPathForDownload(storagePath, fileName) {
-  const root = path.resolve(config.storage.localDirectory);
-  const fallbackName = safeLocalFileName(storagePath.split("/").at(-1), "download.bin");
-  const safeName = safeLocalFileName(fileName, fallbackName);
-  const destination = path.resolve(root, safeName);
-
-  if (!destination.startsWith(`${root}${path.sep}`) && destination !== root) {
-    throw new Error("Invalid local file name.");
-  }
-
-  return { root, destination };
-}
-
-export async function downloadStorageFileToLocal(storagePath, options = {}) {
-  const downloadedFile = await downloadStorageFile(storagePath, options);
-  const { root, destination } = localPathForDownload(downloadedFile.path, options.fileName);
-
-  await fs.mkdir(root, { recursive: true });
-  await fs.writeFile(destination, downloadedFile.buffer);
-
-  return {
-    path: downloadedFile.path,
-    localPath: destination,
-    bytes: downloadedFile.bytes
-  };
 }

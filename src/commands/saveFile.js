@@ -1,8 +1,5 @@
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import {
-  downloadStorageFileToLocal,
-  uploadDiscordAttachment
-} from "../services/storage.js";
+import { uploadDiscordAttachment } from "../services/storage.js";
 import { successEmbed } from "../utils/embeds.js";
 
 function clipField(value) {
@@ -17,13 +14,13 @@ function fileLinkField(url) {
 export default {
   data: new SlashCommandBuilder()
     .setName("savefile")
-    .setDescription("Save Discord files to Supabase Storage or download them locally.")
+    .setDescription("Upload Discord files to Supabase Storage.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((subcommand) =>
       subcommand
         .setName("upload")
-        .setDescription("Save a Discord attachment to Supabase Storage.")
+        .setDescription("Upload a Discord attachment into Supabase Storage.")
         .addAttachmentOption((option) =>
           option
             .setName("file")
@@ -41,25 +38,6 @@ export default {
           option
             .setName("name")
             .setDescription("Optional saved file name.")
-            .setMaxLength(100)
-            .setRequired(false)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("download")
-        .setDescription("Download a Supabase Storage path to the bot's local files.")
-        .addStringOption((option) =>
-          option
-            .setName("path")
-            .setDescription("Storage path from /savefile upload.")
-            .setMaxLength(1000)
-            .setRequired(true)
-        )
-        .addStringOption((option) =>
-          option
-            .setName("name")
-            .setDescription("Optional local file name.")
             .setMaxLength(100)
             .setRequired(false)
         )
@@ -89,19 +67,6 @@ export default {
       return;
     }
 
-    const downloadedFile = await downloadStorageFileToLocal(
-      interaction.options.getString("path", true),
-      { fileName: interaction.options.getString("name") ?? undefined }
-    );
-
-    await interaction.editReply({
-      embeds: [
-        successEmbed("File Downloaded", "Downloaded the Supabase file to the bot's local files.", [
-          { name: "Storage Path", value: clipField(downloadedFile.path) },
-          { name: "Local Path", value: clipField(downloadedFile.localPath) },
-          { name: "Size", value: `${downloadedFile.bytes.toLocaleString()} bytes`, inline: true }
-        ])
-      ]
-    });
+    throw new Error("Unknown savefile action.");
   }
 };

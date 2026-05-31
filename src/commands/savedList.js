@@ -51,7 +51,7 @@ export default {
     }
 
     const listText = formatSavedFiles(files);
-    const message = `Copy the copy name into \`/get filename:\`.\n\n${listText}`;
+    const message = `Copy the copy name into \`/getfile filename:\`.\n\n${listText}`;
 
     if (message.length <= 1900) {
       await interaction.editReply(message);
@@ -63,7 +63,7 @@ export default {
     });
 
     await interaction.editReply({
-      content: "The saved file list is long, so I attached it as a text file. Copy a `copy name` into `/get filename:`.",
+      content: "The saved file list is long, so I attached it as a text file. Copy a `copy name` into `/getfile filename:`.",
       files: [attachment]
     });
   }

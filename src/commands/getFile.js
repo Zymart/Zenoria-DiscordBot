@@ -8,7 +8,7 @@ function clipContent(value) {
 
 export default {
   data: new SlashCommandBuilder()
-    .setName("get")
+    .setName("getfile")
     .setDescription("Send a saved Supabase Storage file.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)

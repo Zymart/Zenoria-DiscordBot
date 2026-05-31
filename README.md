@@ -40,7 +40,7 @@ A Discord.js bot that builds a professional official Roblox game server structur
 
 ### Optional Supabase Storage
 
-`/savefile upload` saves a Discord attachment to Supabase Storage. `/savedlist` shows copy names for saved files. `/get filename:<copy name>` sends a saved file back in Discord. `/savefile download` downloads a stored Supabase file into the bot's local files.
+`/savefile upload` saves a Discord attachment to Supabase Storage. `/savedlist` shows copy names for saved files. `/getfile filename:<copy name>` sends a saved file back in Discord.
 
 1. In Supabase, create a Storage bucket such as `discord-files`.
 2. Add these environment variables:
@@ -51,7 +51,6 @@ A Discord.js bot that builds a professional official Roblox game server structur
    SUPABASE_STORAGE_BUCKET=discord-files
    SUPABASE_STORAGE_PUBLIC=false
    SUPABASE_SIGNED_URL_EXPIRES_SECONDS=3600
-   SAVEFILE_LOCAL_DIR=./data/files
    ```
 
 Use a private bucket with the service role key for the bot. If you make the bucket public, set `SUPABASE_STORAGE_PUBLIC=true` so the bot uses public file URLs.
@@ -78,8 +77,7 @@ Use `/setup force:true` when the server was already set up and you intentionally
 - `/post_sneak` posts a spoilered sneak peek file to the sneak-peeks channel.
 - `/savefile upload` stores a Discord attachment in Supabase Storage.
 - `/savedlist` lists Supabase Storage files with copy names.
-- `/get` sends a saved Supabase Storage file in Discord.
-- `/savefile download` downloads a Supabase Storage path into the bot's local files.
+- `/getfile` sends a saved Supabase Storage file in Discord.
 - `/application_accept` accepts an application ticket, gives a role, and closes the ticket.
 - `/application_deny` denies an application ticket and closes it.
 - `/task` creates a development task thread inside the matching specialty channel, pings the assigned role, routes completed work to leadership approval, and posts approved tasks in `finished-tasks`.
