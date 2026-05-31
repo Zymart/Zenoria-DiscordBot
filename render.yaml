@@ -17,6 +17,16 @@ services:
         value: E2231A
       - key: DATA_FILE
         value: ./data/state.json
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: discord-files
+      - key: SUPABASE_STORAGE_PUBLIC
+        value: "false"
+      - key: SUPABASE_SIGNED_URL_EXPIRES_SECONDS
+        value: "3600"
       - key: WIPE_CHANNELS_ON_SETUP
         value: "true"
       - key: PROTECTED_CHANNEL_IDS

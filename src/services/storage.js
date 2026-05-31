@@ -123,6 +123,51 @@ export async function uploadDiscordAttachment(attachment, options = {}) {
   };
 }
 
+function taskRecordPath(guildId, taskId) {
+  return `${cleanPathPart(guildId, "guild")}/tasks/task-${cleanPathPart(taskId, "unknown")}.json`;
+}
+
+export async function saveTaskRecord(guildId, task) {
+  if (!isStorageConfigured()) return { skipped: true };
+
+  const bucket = requireStorageBucket();
+  const recordPath = taskRecordPath(guildId, task.id);
+  const body = Buffer.from(JSON.stringify({
+    ...task,
+    savedAt: new Date().toISOString()
+  }, null, 2), "utf8");
+
+  const { data, error } = await bucket.upload(recordPath, body, {
+    contentType: "application/json",
+    upsert: true,
+    metadata: {
+      type: "task",
+      guildId: String(guildId),
+      taskId: String(task.id),
+      status: String(task.status)
+    }
+  });
+
+  if (error) throw error;
+
+  return {
+    bucket: config.storage.bucket,
+    path: data.path
+  };
+}
+
+export async function deleteTaskRecord(guildId, taskId) {
+  if (!isStorageConfigured()) return { skipped: true };
+
+  const bucket = requireStorageBucket();
+  const recordPath = taskRecordPath(guildId, taskId);
+  const { error } = await bucket.remove([recordPath]);
+
+  if (error) throw error;
+
+  return { path: recordPath };
+}
+
 function fileDisplayName(storagePath) {
   return safeLocalFileName(storagePath.split("/").at(-1), "download.bin");
 }
@@ -174,13 +219,14 @@ export async function listSavedFiles(options = {}) {
     maxFilesToScan: Math.max(options.limit ?? 25, 1000)
   });
 
+  const userSavedFiles = files.filter((file) => !file.path.includes("/tasks/"));
   const search = String(options.search || "").trim().toLowerCase();
   const filteredFiles = search
-    ? files.filter((file) =>
+    ? userSavedFiles.filter((file) =>
       file.name.toLowerCase().includes(search) ||
       file.path.toLowerCase().includes(search)
     )
-    : files;
+    : userSavedFiles;
 
   return filteredFiles
     .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")))

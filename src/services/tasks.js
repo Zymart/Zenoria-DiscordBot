@@ -8,6 +8,7 @@ import {
 import { getGuildState, updateGuildState } from "../data/store.js";
 import { createEmbed, errorEmbed, infoEmbed, successEmbed } from "../utils/embeds.js";
 import { sendLog } from "./logger.js";
+import { deleteTaskRecord, saveTaskRecord } from "./storage.js";
 
 export const taskRoleChoices = [
   { name: "Scripter / Programmer", value: "Programmer" },
@@ -271,6 +272,45 @@ async function getStoredTask(guildId, taskId) {
   return task;
 }
 
+async function deleteStoredTask(guildId, taskId) {
+  await updateGuildState(guildId, (guildState) => {
+    delete guildState.tasks.items[taskId];
+  });
+}
+
+async function saveTaskRecordQuietly(guild, task) {
+  try {
+    return await saveTaskRecord(guild.id, task);
+  } catch (error) {
+    console.error("Could not save task record to Supabase Storage:", error);
+    await sendLog(guild, {
+      title: "Task Storage Error",
+      description: "I could not save the task record to Supabase Storage.",
+      fields: [
+        { name: "Task", value: task.title ?? task.id, inline: true },
+        { name: "Error", value: truncate(error.message || "Unknown error", 1024), inline: false }
+      ],
+      color: 0xe74c3c
+    }).catch(() => null);
+    return null;
+  }
+}
+
+async function deleteTaskRecordQuietly(guild, taskId) {
+  try {
+    return await deleteTaskRecord(guild.id, taskId);
+  } catch (error) {
+    console.error("Could not delete task record from Supabase Storage:", error);
+    await sendLog(guild, {
+      title: "Task Storage Cleanup Error",
+      description: "I could not delete the finished task record from Supabase Storage.",
+      fields: [{ name: "Error", value: truncate(error.message || "Unknown error", 1024), inline: false }],
+      color: 0xe74c3c
+    }).catch(() => null);
+    return null;
+  }
+}
+
 async function fetchThread(guild, task) {
   const channel = guild.channels.cache.get(task.threadId) ??
     await guild.channels.fetch(task.threadId).catch(() => null);
@@ -345,14 +385,17 @@ export async function createTaskThread(guild, actor, { roleName, title, details,
     allowedMentions: { roles: mentionRoleIds, users: [actor.id] }
   });
 
+  const storedTask = {
+    ...taskDraft,
+    channelId: channel.id,
+    threadId: thread.id,
+    messageId: taskMessage.id,
+  };
+
   await updateGuildState(guild.id, (guildState) => {
-    guildState.tasks.items[taskId] = {
-      ...taskDraft,
-      channelId: channel.id,
-      threadId: thread.id,
-      messageId: taskMessage.id,
-    };
+    guildState.tasks.items[taskId] = storedTask;
   });
+  await saveTaskRecordQuietly(guild, storedTask);
 
   await sendLog(guild, {
     title: "Task Created",
@@ -419,6 +462,7 @@ export async function submitTaskForApproval(guild, member, taskId) {
   await updateGuildState(guild.id, (guildState) => {
     guildState.tasks.items[taskId] = updatedTask;
   });
+  await saveTaskRecordQuietly(guild, updatedTask);
 
   await editTaskMessage(guild, updatedTask, doneButton(taskId, {
     disabled: true,
@@ -511,6 +555,8 @@ export async function reviewTask(guild, member, taskId, approved) {
   });
 
   if (!approved) {
+    await saveTaskRecordQuietly(guild, updatedTask);
+
     return errorEmbed(
       "Task Rejected",
       handlerId
@@ -520,8 +566,12 @@ export async function reviewTask(guild, member, taskId, approved) {
   }
 
   if (finishedAnnouncement.posted) {
+    await deleteTaskRecordQuietly(guild, taskId);
+    await deleteStoredTask(guild.id, taskId);
     return successEmbed("Task Approved", `The task was approved and posted in ${finishedAnnouncement.channel}.`);
   }
+
+  await saveTaskRecordQuietly(guild, updatedTask);
 
   if (finishedAnnouncement.error) {
     return successEmbed(
