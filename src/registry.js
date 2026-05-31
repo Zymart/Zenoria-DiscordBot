@@ -5,6 +5,7 @@ import applicationDeny from "./commands/applicationDeny.js";
 import ban from "./commands/ban.js";
 import channelsSetup from "./commands/channelsSetup.js";
 import cleanUnverifiedDevs from "./commands/cleanUnverifiedDevs.js";
+import getFile from "./commands/getFile.js";
 import kick from "./commands/kick.js";
 import lock from "./commands/lock.js";
 import memberInfo from "./commands/memberInfo.js";
@@ -19,6 +20,8 @@ import removeRole from "./commands/removeRole.js";
 import rolePermission from "./commands/rolePermission.js";
 import roleSetup from "./commands/roleSetup.js";
 import rolesSetup from "./commands/rolesSetup.js";
+import saveFile from "./commands/saveFile.js";
+import savedList from "./commands/savedList.js";
 import setup from "./commands/setup.js";
 import task from "./commands/task.js";
 import ticket from "./commands/ticket.js";
@@ -37,6 +40,9 @@ export const commands = [
   cleanUnverifiedDevs,
   roleSetup,
   rolesSetup,
+  saveFile,
+  savedList,
+  getFile,
   pingVerify,
   postFaq,
   postLink,

@@ -11,6 +11,11 @@ function parseColor(value) {
   return Number.isFinite(parsed) ? parsed : 0xe2231a;
 }
 
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function parseIdList(value, fallback = []) {
   if (!value) return fallback;
 
@@ -28,6 +33,17 @@ export const config = {
   brandName: process.env.BRAND_NAME ?? "Zenoria",
   embedColor: parseColor(process.env.EMBED_COLOR),
   dataFile: process.env.DATA_FILE ?? "./data/state.json",
+  storage: {
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY,
+    bucket: process.env.SUPABASE_STORAGE_BUCKET || "discord-files",
+    publicBucket: parseBoolean(process.env.SUPABASE_STORAGE_PUBLIC, false),
+    signedUrlExpiresIn: parsePositiveInteger(
+      process.env.SUPABASE_SIGNED_URL_EXPIRES_SECONDS,
+      60 * 60
+    ),
+    localDirectory: process.env.SAVEFILE_LOCAL_DIR || "./data/files"
+  },
   setup: {
     verifiedRoleName: process.env.VERIFIED_ROLE_NAME ?? "Verified",
     memberRoleName: process.env.MEMBER_ROLE_NAME ?? "Member",
