@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -22,6 +23,10 @@ export const taskRoleChoices = [
 ];
 
 const approvalRoleNames = ["Owner", "Co-Owner", "Head Manager", "Lead Developer"];
+
+function createTaskId() {
+  return `${Date.now()}-${randomUUID().slice(0, 8)}`;
+}
 
 const finishedTasksChannel = {
   key: "finished-tasks",
@@ -256,7 +261,7 @@ async function restoreTaskFromMessage(guild, taskId, { channel, message } = {}) 
   if (!createdBy) return null;
 
   return {
-    id: taskId,
+    id: message.id ?? taskId,
     title,
     details: embed.description || "No details saved.",
     due: getEmbedField(embed, "Due"),
@@ -269,6 +274,14 @@ async function restoreTaskFromMessage(guild, taskId, { channel, message } = {}) 
     createdBy,
     createdAt: message.createdAt?.toISOString?.() ?? new Date(message.createdTimestamp ?? Date.now()).toISOString()
   };
+}
+
+function taskMatchesContext(task, { channel, message } = {}) {
+  if (!task) return false;
+  if (message?.id && task.messageId !== message.id) return false;
+  if (channel?.id && task.threadId !== channel.id) return false;
+
+  return true;
 }
 
 function hasAssignedTaskRole(member, task, assignedRole) {
@@ -354,20 +367,28 @@ async function getStoredTask(guild, taskId, context = {}) {
   const state = await getGuildState(guild.id);
   const task = state.tasks.items[taskId];
 
-  if (task) return task;
+  if (task && taskMatchesContext(task, context)) return task;
 
   const storedTask = await loadTaskRecord(guild.id, taskId).catch((error) => {
     console.error("Could not load task record from Supabase Storage:", error);
     return null;
   });
 
-  const restoredTask = storedTask ?? await restoreTaskFromMessage(guild, taskId, context);
+  if (storedTask && taskMatchesContext(storedTask, context)) {
+    await updateGuildState(guild.id, (guildState) => {
+      guildState.tasks.items[storedTask.id] = storedTask;
+    });
+
+    return storedTask;
+  }
+
+  const restoredTask = await restoreTaskFromMessage(guild, taskId, context);
 
   if (restoredTask) {
     await updateGuildState(guild.id, (guildState) => {
-      guildState.tasks.items[taskId] = restoredTask;
+      guildState.tasks.items[restoredTask.id] = restoredTask;
       const numericTaskId = Number.parseInt(taskId, 10);
-      if (Number.isInteger(numericTaskId)) {
+      if (Number.isSafeInteger(numericTaskId) && String(numericTaskId) === taskId) {
         guildState.tasks.counter = Math.max(guildState.tasks.counter, numericTaskId);
       }
     });
@@ -462,9 +483,9 @@ export async function createTaskThread(guild, actor, { roleName, title, details,
   const channel = await findTaskChannel(guild, roleName);
   validateTaskChannel(channel);
 
-  const taskId = await updateGuildState(guild.id, (guildState) => {
+  const taskId = createTaskId();
+  await updateGuildState(guild.id, (guildState) => {
     guildState.tasks.counter += 1;
-    return String(guildState.tasks.counter);
   });
   const thread = await channel.threads.create({
     name: buildThreadName(roleName, title),
@@ -551,6 +572,7 @@ export async function submitTaskForApproval(guild, member, taskId, context = {})
   const normalizedTask = assignedRole
     ? { ...task, roleName: assignedRole.name, roleId: assignedRole.id }
     : task;
+  const activeTaskId = normalizedTask.id ?? taskId;
 
   const thread = await fetchThread(guild, normalizedTask);
   const approvalRoles = getApprovalRoles(guild);
@@ -559,11 +581,11 @@ export async function submitTaskForApproval(guild, member, taskId, context = {})
     content: approvalMentions || "Approval requested.",
     embeds: [
       infoEmbed("Task Ready For Approval", `${member} marked this task as done. Owner, Co-Owner, Head Manager, or Lead Developer must approve it.`, [
-        { name: "Task", value: task.title, inline: true },
+        { name: "Task", value: normalizedTask.title, inline: true },
         { name: "Handled By", value: `${member}`, inline: true }
       ])
     ],
-    components: [approvalButtons(taskId)],
+    components: [approvalButtons(activeTaskId)],
     allowedMentions: { roles: approvalRoles.map((role) => role.id), users: [member.id] }
   });
 
@@ -577,11 +599,11 @@ export async function submitTaskForApproval(guild, member, taskId, context = {})
   };
 
   await updateGuildState(guild.id, (guildState) => {
-    guildState.tasks.items[taskId] = updatedTask;
+    guildState.tasks.items[activeTaskId] = updatedTask;
   });
   await saveTaskRecordQuietly(guild, updatedTask);
 
-  await editTaskMessage(guild, updatedTask, doneButton(taskId, {
+  await editTaskMessage(guild, updatedTask, doneButton(activeTaskId, {
     disabled: true,
     label: "Awaiting Approval"
   }), { refreshEmbed: true });
@@ -613,7 +635,7 @@ export async function reviewTask(guild, member, taskId, approved) {
   };
 
   await updateGuildState(guild.id, (guildState) => {
-    guildState.tasks.items[taskId] = updatedTask;
+    guildState.tasks.items[updatedTask.id ?? taskId] = updatedTask;
   });
 
   if (task.approvalMessageId) {
@@ -621,7 +643,7 @@ export async function reviewTask(guild, member, taskId, approved) {
     await approvalMessage?.delete().catch(() => null);
   }
 
-  await editTaskMessage(guild, updatedTask, doneButton(taskId, {
+  await editTaskMessage(guild, updatedTask, doneButton(updatedTask.id ?? taskId, {
     disabled: approved,
     label: approved ? "Approved" : "Done"
   }), { refreshEmbed: true });
@@ -683,8 +705,8 @@ export async function reviewTask(guild, member, taskId, approved) {
   }
 
   if (finishedAnnouncement.posted) {
-    await deleteTaskRecordQuietly(guild, taskId);
-    await deleteStoredTask(guild.id, taskId);
+    await deleteTaskRecordQuietly(guild, updatedTask.id ?? taskId);
+    await deleteStoredTask(guild.id, updatedTask.id ?? taskId);
     return successEmbed("Task Approved", `The task was approved and posted in ${finishedAnnouncement.channel}.`);
   }
 
