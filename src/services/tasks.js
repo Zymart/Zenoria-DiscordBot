@@ -184,8 +184,47 @@ function hasRole(member, roleName) {
   return member.roles.cache.some((role) => role.name === roleName);
 }
 
+function formatRoleList(roleNames) {
+  if (roleNames.length <= 2) return roleNames.join(" or ");
+
+  return `${roleNames.slice(0, -1).join(", ")}, or ${roleNames.at(-1)}`;
+}
+
+function canSubmitAnyTask(member) {
+  return (
+    member.id === member.guild.ownerId ||
+    approvalRoleNames.some((roleName) => hasRole(member, roleName))
+  );
+}
+
 function canApprove(member) {
-  return approvalRoleNames.some((roleName) => hasRole(member, roleName));
+  return canSubmitAnyTask(member);
+}
+
+function getStoredTaskRole(guild, task) {
+  return task.roleId ? guild.roles.cache.get(task.roleId) ?? null : null;
+}
+
+function getTaskRoleNameFromStoredChannel(state, task) {
+  if (!task.channelId) return null;
+
+  return Object.entries(taskChannelByRole)
+    .find(([, mapping]) => state.channels?.[mapping.key] === task.channelId)
+    ?.[0] ?? null;
+}
+
+async function resolveAssignedTaskRole(guild, task) {
+  const state = await getGuildState(guild.id).catch(() => null);
+  const roleName = state ? getTaskRoleNameFromStoredChannel(state, task) ?? task.roleName : task.roleName;
+  const roleByName = roleName ? getRoleByName(guild, roleName) : null;
+
+  return roleByName ?? getStoredTaskRole(guild, task);
+}
+
+function hasAssignedTaskRole(member, task, assignedRole) {
+  if (assignedRole) return member.roles.cache.has(assignedRole.id);
+
+  return hasRole(member, task.roleName);
 }
 
 function taskStatusLabel(status) {
@@ -427,15 +466,25 @@ export async function submitTaskForApproval(guild, member, taskId) {
   }
 
   const handlerId = getTaskHandlerId(task);
-  if (handlerId && handlerId !== member.id) {
+  const canOverrideSubmission = canSubmitAnyTask(member);
+
+  if (handlerId && handlerId !== member.id && !canOverrideSubmission) {
     throw new Error(`Only <@${handlerId}> can mark this task as done because they are handling it.`);
   }
 
-  if (!member.roles.cache.has(task.roleId) && !hasRole(member, task.roleName)) {
-    throw new Error(`Only members with the ${task.roleName} role can mark this task as done.`);
+  const assignedRole = await resolveAssignedTaskRole(guild, task);
+  if (!canOverrideSubmission && !hasAssignedTaskRole(member, task, assignedRole)) {
+    const assignedRoleName = assignedRole?.name ?? task.roleName ?? "assigned specialty";
+    throw new Error(
+      `Only members with the ${assignedRoleName} role, leadership (${formatRoleList(approvalRoleNames)}), or the server owner can mark this task as done.`
+    );
   }
 
-  const thread = await fetchThread(guild, task);
+  const normalizedTask = assignedRole
+    ? { ...task, roleName: assignedRole.name, roleId: assignedRole.id }
+    : task;
+
+  const thread = await fetchThread(guild, normalizedTask);
   const approvalRoles = getApprovalRoles(guild);
   const approvalMentions = approvalRoles.map((role) => `${role}`).join(" ");
   const approvalMessage = await thread.send({
@@ -451,7 +500,7 @@ export async function submitTaskForApproval(guild, member, taskId) {
   });
 
   const updatedTask = {
-    ...task,
+    ...normalizedTask,
     status: "pending_approval",
     handledBy: handlerId ?? member.id,
     completedBy: member.id,
