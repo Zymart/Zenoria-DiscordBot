@@ -243,6 +243,19 @@ function getTaskRoleNameFromChannel(channel) {
     ?.[0] ?? null;
 }
 
+function roleSlug(roleName) {
+  return roleName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function getTaskRoleNameFromThreadName(thread) {
+  if (!thread?.name) return null;
+
+  const normalizedThreadName = normalizeChannelName(thread.name);
+  return taskRoleChoices
+    .map((choice) => choice.value)
+    .find((roleName) => normalizedThreadName.startsWith(`task-${roleSlug(roleName)}-`)) ?? null;
+}
+
 async function restoreTaskFromMessage(guild, taskId, { channel, message } = {}) {
   if (!channel?.isThread?.() || !message) return null;
 
@@ -255,10 +268,13 @@ async function restoreTaskFromMessage(guild, taskId, { channel, message } = {}) 
   const assignedRole = roleId ? guild.roles.cache.get(roleId) : null;
   const parentChannel = channel.parent ??
     (channel.parentId ? await guild.channels.fetch(channel.parentId).catch(() => null) : null);
-  const roleName = assignedRole?.name ?? getTaskRoleNameFromChannel(parentChannel) ?? assignedRoleValue ?? "Unknown";
+  const channelRoleName = getTaskRoleNameFromChannel(parentChannel);
+  const threadRoleName = getTaskRoleNameFromThreadName(channel);
+  const contextRoleName = channelRoleName ?? threadRoleName;
+  const contextRole = contextRoleName ? getRoleByName(guild, contextRoleName) : null;
+  const taskRole = contextRole ?? assignedRole;
+  const roleName = contextRoleName ?? assignedRole?.name ?? assignedRoleValue ?? "Unknown";
   const createdBy = mentionId(getEmbedField(embed, "Created By"), /<@!?(\d{17,20})>/);
-
-  if (!createdBy) return null;
 
   return {
     id: message.id ?? taskId,
@@ -266,12 +282,12 @@ async function restoreTaskFromMessage(guild, taskId, { channel, message } = {}) 
     details: embed.description || "No details saved.",
     due: getEmbedField(embed, "Due"),
     roleName,
-    roleId: assignedRole?.id ?? roleId ?? null,
+    roleId: taskRole?.id ?? roleId ?? null,
     channelId: parentChannel?.id ?? channel.parentId ?? null,
     threadId: channel.id,
     messageId: message.id,
     status: "open",
-    createdBy,
+    createdBy: createdBy ?? null,
     createdAt: message.createdAt?.toISOString?.() ?? new Date(message.createdTimestamp ?? Date.now()).toISOString()
   };
 }
@@ -309,11 +325,12 @@ function getTaskHandlerId(task) {
 
 function buildTaskEmbed(guild, task) {
   const assignedRole = task.roleId ? `<@&${task.roleId}>` : task.roleName;
+  const createdBy = task.createdBy ? `<@${task.createdBy}>` : "Unknown";
   const leadershipRoles = getApprovalRoles(guild);
   const leadershipMentions = leadershipRoles.map((role) => `${role}`).join(" ");
   const fields = [
     { name: "Assigned Role", value: assignedRole, inline: true },
-    { name: "Created By", value: `<@${task.createdBy}>`, inline: true },
+    { name: "Created By", value: createdBy, inline: true },
     { name: "Status", value: taskStatusLabel(task.status), inline: true },
     {
       name: "Leadership",
@@ -365,6 +382,21 @@ function approvalButtons(taskId, { disabled = false } = {}) {
 
 async function getStoredTask(guild, taskId, context = {}) {
   const state = await getGuildState(guild.id);
+
+  const restoredTask = await restoreTaskFromMessage(guild, taskId, context);
+  if (restoredTask) {
+    await updateGuildState(guild.id, (guildState) => {
+      guildState.tasks.items[restoredTask.id] = restoredTask;
+      const numericTaskId = Number.parseInt(taskId, 10);
+      if (Number.isSafeInteger(numericTaskId) && String(numericTaskId) === taskId) {
+        guildState.tasks.counter = Math.max(guildState.tasks.counter, numericTaskId);
+      }
+    });
+    await saveTaskRecordQuietly(guild, restoredTask);
+
+    return restoredTask;
+  }
+
   const task = state.tasks.items[taskId];
 
   if (task && taskMatchesContext(task, context)) return task;
@@ -380,21 +412,6 @@ async function getStoredTask(guild, taskId, context = {}) {
     });
 
     return storedTask;
-  }
-
-  const restoredTask = await restoreTaskFromMessage(guild, taskId, context);
-
-  if (restoredTask) {
-    await updateGuildState(guild.id, (guildState) => {
-      guildState.tasks.items[restoredTask.id] = restoredTask;
-      const numericTaskId = Number.parseInt(taskId, 10);
-      if (Number.isSafeInteger(numericTaskId) && String(numericTaskId) === taskId) {
-        guildState.tasks.counter = Math.max(guildState.tasks.counter, numericTaskId);
-      }
-    });
-    await saveTaskRecordQuietly(guild, restoredTask);
-
-    return restoredTask;
   }
 
   throw new Error("That task could not be found in the bot state, saved task storage, or task message.");
