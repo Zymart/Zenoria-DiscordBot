@@ -174,6 +174,29 @@ export async function saveTaskRecord(guildId, task) {
   };
 }
 
+function isMissingStorageObjectError(error) {
+  return (
+    error?.statusCode === 404 ||
+    error?.statusCode === "404" ||
+    /not found/i.test(error?.message || "")
+  );
+}
+
+export async function loadTaskRecord(guildId, taskId) {
+  if (!isStorageConfigured()) return null;
+
+  const bucket = requireStorageBucket();
+  const recordPath = taskRecordPath(guildId, taskId);
+  const { data, error } = await bucket.download(recordPath);
+
+  if (error) {
+    if (isMissingStorageObjectError(error)) return null;
+    throw error;
+  }
+
+  return JSON.parse(await data.text());
+}
+
 export async function deleteTaskRecord(guildId, taskId) {
   if (!isStorageConfigured()) return { skipped: true };
 

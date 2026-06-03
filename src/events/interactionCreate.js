@@ -109,7 +109,10 @@ export function registerInteractionCreate(client) {
         if (interaction.customId.startsWith("task:done:")) {
           await interaction.deferReply({ flags: MessageFlags.Ephemeral });
           const [, , taskId] = interaction.customId.split(":");
-          const embed = await submitTaskForApproval(interaction.guild, member, taskId);
+          const embed = await submitTaskForApproval(interaction.guild, member, taskId, {
+            channel: interaction.channel,
+            message: interaction.message
+          });
           await interaction.editReply({ embeds: [embed] });
           return;
         }

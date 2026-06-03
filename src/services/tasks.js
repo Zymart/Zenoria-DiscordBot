@@ -8,7 +8,7 @@ import {
 import { getGuildState, updateGuildState } from "../data/store.js";
 import { createEmbed, errorEmbed, infoEmbed, successEmbed } from "../utils/embeds.js";
 import { sendLog } from "./logger.js";
-import { deleteTaskRecord, saveTaskRecord } from "./storage.js";
+import { deleteTaskRecord, loadTaskRecord, saveTaskRecord } from "./storage.js";
 
 export const taskRoleChoices = [
   { name: "Scripter / Programmer", value: "Programmer" },
@@ -221,6 +221,56 @@ async function resolveAssignedTaskRole(guild, task) {
   return roleByName ?? getStoredTaskRole(guild, task);
 }
 
+function getEmbedField(embed, fieldName) {
+  return embed.fields?.find((field) => field.name === fieldName)?.value ?? null;
+}
+
+function mentionId(value, pattern) {
+  return String(value || "").match(pattern)?.[1] ?? null;
+}
+
+function getTaskRoleNameFromChannel(channel) {
+  if (!channel) return null;
+
+  const normalizedChannelName = normalizeChannelName(channel.name);
+  return Object.entries(taskChannelByRole)
+    .find(([, mapping]) => mapping.names.map(normalizeChannelName).includes(normalizedChannelName))
+    ?.[0] ?? null;
+}
+
+async function restoreTaskFromMessage(guild, taskId, { channel, message } = {}) {
+  if (!channel?.isThread?.() || !message) return null;
+
+  const embed = message.embeds?.[0];
+  const title = embed?.title?.replace(/^Task:\s*/i, "").trim();
+  if (!title) return null;
+
+  const assignedRoleValue = getEmbedField(embed, "Assigned Role");
+  const roleId = mentionId(assignedRoleValue, /<@&(\d{17,20})>/);
+  const assignedRole = roleId ? guild.roles.cache.get(roleId) : null;
+  const parentChannel = channel.parent ??
+    (channel.parentId ? await guild.channels.fetch(channel.parentId).catch(() => null) : null);
+  const roleName = assignedRole?.name ?? getTaskRoleNameFromChannel(parentChannel) ?? assignedRoleValue ?? "Unknown";
+  const createdBy = mentionId(getEmbedField(embed, "Created By"), /<@!?(\d{17,20})>/);
+
+  if (!createdBy) return null;
+
+  return {
+    id: taskId,
+    title,
+    details: embed.description || "No details saved.",
+    due: getEmbedField(embed, "Due"),
+    roleName,
+    roleId: assignedRole?.id ?? roleId ?? null,
+    channelId: parentChannel?.id ?? channel.parentId ?? null,
+    threadId: channel.id,
+    messageId: message.id,
+    status: "open",
+    createdBy,
+    createdAt: message.createdAt?.toISOString?.() ?? new Date(message.createdTimestamp ?? Date.now()).toISOString()
+  };
+}
+
 function hasAssignedTaskRole(member, task, assignedRole) {
   if (assignedRole) return member.roles.cache.has(assignedRole.id);
 
@@ -300,15 +350,33 @@ function approvalButtons(taskId, { disabled = false } = {}) {
   );
 }
 
-async function getStoredTask(guildId, taskId) {
-  const state = await getGuildState(guildId);
+async function getStoredTask(guild, taskId, context = {}) {
+  const state = await getGuildState(guild.id);
   const task = state.tasks.items[taskId];
 
-  if (!task) {
-    throw new Error("That task could not be found in the bot state.");
+  if (task) return task;
+
+  const storedTask = await loadTaskRecord(guild.id, taskId).catch((error) => {
+    console.error("Could not load task record from Supabase Storage:", error);
+    return null;
+  });
+
+  const restoredTask = storedTask ?? await restoreTaskFromMessage(guild, taskId, context);
+
+  if (restoredTask) {
+    await updateGuildState(guild.id, (guildState) => {
+      guildState.tasks.items[taskId] = restoredTask;
+      const numericTaskId = Number.parseInt(taskId, 10);
+      if (Number.isInteger(numericTaskId)) {
+        guildState.tasks.counter = Math.max(guildState.tasks.counter, numericTaskId);
+      }
+    });
+    await saveTaskRecordQuietly(guild, restoredTask);
+
+    return restoredTask;
   }
 
-  return task;
+  throw new Error("That task could not be found in the bot state, saved task storage, or task message.");
 }
 
 async function deleteStoredTask(guildId, taskId) {
@@ -452,10 +520,10 @@ export async function createTaskThread(guild, actor, { roleName, title, details,
   };
 }
 
-export async function submitTaskForApproval(guild, member, taskId) {
+export async function submitTaskForApproval(guild, member, taskId, context = {}) {
   await guild.roles.fetch();
 
-  const task = await getStoredTask(guild.id, taskId);
+  const task = await getStoredTask(guild, taskId, context);
 
   if (task.status === "pending_approval") {
     return infoEmbed("Already Submitted", "This task is already waiting for approval.");
@@ -524,7 +592,7 @@ export async function submitTaskForApproval(guild, member, taskId) {
 export async function reviewTask(guild, member, taskId, approved) {
   await guild.roles.fetch();
 
-  const task = await getStoredTask(guild.id, taskId);
+  const task = await getStoredTask(guild, taskId);
 
   if (!canApprove(member)) {
     throw new Error("Only Owner, Co-Owner, Head Manager, or Lead Developer can approve tasks.");
